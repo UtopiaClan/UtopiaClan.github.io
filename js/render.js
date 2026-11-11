@@ -32,8 +32,10 @@
   }
 
   function attackList(side, isEnemy) {
-    if (!side || !side.attacks.length) return `<li class="esp-attack"><span class="esp-attack-target">—</span><span>Sem ataques</span></li>`;
-    return side.attacks.map((a) => `<li class="esp-attack${isEnemy ? " is-enemy" : ""}">
+    const attacks = side?.attacks;
+    if (!Array.isArray(attacks)) return `<li class="esp-attack"><span class="esp-attack-target">—</span><span>Dados indisponíveis</span></li>`;
+    if (!attacks.length) return `<li class="esp-attack"><span class="esp-attack-target">—</span><span>Sem ataques</span></li>`;
+    return attacks.map((a) => `<li class="esp-attack${isEnemy ? " is-enemy" : ""}">
       <span class="esp-attack-target">#${a.target_position ?? "?"}</span><span>${esc(a.target_name ?? "—")}</span>
       <span class="esp-attack-stars">${stars(a.stars)}</span><span class="esp-attack-result">- ${Math.round(a.destruction)}%</span></li>`).join("");
   }
@@ -69,7 +71,7 @@
     }
     const prep = war.state === "preparation";
     const target = prep ? war.start_time : war.end_time;
-    const meta = (war.type === "cwl" ? `CWL ${war.round}/${war.total_rounds}` : "Guerra normal") + (prep ? " · Preparação" : "");
+    const meta = (war.type === "cwl" ? `CWL ${war.round ?? "—"}/${war.total_rounds ?? "—"}` : "Guerra normal") + (prep ? " · Preparação" : "");
     return `<div class="acc-item is-open">
       <div class="acc-btn acc-btn-static"><span class="acc-title">${ic("shield-halved")} Guerra</span><span class="acc-meta">${ic("trophy")} ${meta}</span></div>
       <div class="acc-body-content">
@@ -147,7 +149,7 @@
         <span class="hist-size">⚔️ ${s.team_size ? s.team_size + "x" + s.team_size : "—"}</span><span class="hist-stars">⭐ ${s.stars ?? "—"}</span><span class="hist-pct">💥 ${pct(s.destruction)}</span></span>
       ${expandBtn("data-cwl-season-btn", "Ver as rodadas de " + seasonLabel(s.season))}</div>
       <div class="hist-detail hidden" data-cwl-season-body><ul class="hist-list hist-sublist">
-        ${s.rounds.map((r) => warRow(r, us, `<span class="hist-round">${seasonLabel(s.season).replace(" " + s.season.slice(0, 4), "")} - ${r.round}/${r.total_rounds}</span>`, true)).join("")}
+        ${s.rounds.map((r) => warRow(r, us, `<span class="hist-round">${seasonLabel(s.season).replace(" " + s.season.slice(0, 4), "")} - ${r.round ?? "—"}/${r.total_rounds ?? "—"}</span>`, true)).join("")}
       </ul></div></li>`;
   }
 
