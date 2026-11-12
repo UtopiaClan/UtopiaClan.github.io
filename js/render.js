@@ -114,17 +114,180 @@
   const starRow = (list) => list.map(p2).join("/");
   const lgRow = (parts) => `<div class="lg-row">${parts.map(([e, v]) => `<span class="lg-part"><span class="lg-emoji">${e}</span>${v}</span>`).join('<span class="lg-dot">·</span>')}</div>`;
 
+  /* ---------- Rank (liga) ---------- */
+
+  // Ícone da liga: assets/leagues/<icon>.png (ou .webp), onde <icon> é o `emoji_name` da API
+  // (ex.: Electro_Dragon_League, Legend_League_III). Sem arquivo, aparece só o texto. Ver app.js (erro de imagem).
+  function rankIcon(tier) {
+    if (!tier || !tier.icon) return "";
+    const srcs = [tier.icon_url, `assets/leagues/${tier.icon}.png`, `assets/leagues/${tier.icon}.webp`].filter(Boolean);
+    return `<img class="rank-icon" src="${esc(srcs[0])}" data-fb="${esc(srcs.slice(1).join(" "))}" alt="${esc(tier.label)}" title="${esc(tier.label)}" width="32" height="32">`;
+  }
+  const nf = (n) => (n == null ? "—" : Number(n).toLocaleString("pt-BR"));
+
+  // `rank`: { tier (0–36), label, short, icon, trophies|null } — montado em app.js a partir da API.
+  function rankCell(rank) {
+    if (!rank) return `<span class="join-date">—</span>`;
+    const trophy = rank.trophies == null ? "" : `🏆 ${nf(rank.trophies)}`;
+    return `<div class="rank-cell">${rankIcon(rank)}<span class="rank-text"><span class="rank-num"><span class="rank-short">${esc(rank.short)}</span><span class="rank-label">${esc(rank.label)}</span></span><span class="rank-trophy">${trophy}</span></span></div>`;
+  }
+
   function memberRow(m) {
     const role = ROLES[m.role] || ROLES.member;
-    return `<tr data-member-row data-member-name="${esc(m.name)}" data-member-role="${role.label}">
+    return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}">
+      <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td>
       <td><div class="member-cell"><span class="member-avatar" data-role-tip data-role="${role.label}" tabindex="0" role="button" aria-label="Cargo: ${role.label}">${ic(role.icon)}<span class="role-tip" role="tooltip">${role.label}</span></span><span class="member-name">${esc(m.name)}</span></div></td>
+      <td class="cell-center">${rankCell(m.rank)}</td>
       <td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
       <td class="cell-center"><div class="lg-cell">
         <div class="lg-view lg-view-attack">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)]])}</div>
         <div class="lg-view lg-view-extra">${lgRow([["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div>
       </div></td>
-      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span></div></td></tr>`;
+      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span></div></td></tr>
+    <tr class="member-detail hidden" data-member-detail-row><td colspan="7"><div class="rk-wrap" data-member-detail></div></td></tr>`;
+  }
+
+  /* ---------- Ranqueada do membro (semana atual e anterior) ---------- */
+
+  const pad3 = (n) => (n == null ? "---" : String(n).padStart(3, "0"));
+  const signed = (n, neg) => `${neg ? "-" : "+"}${String(Math.abs(Math.round(n))).padStart(2, "0")}`;
+  const avgTrophies = (v, neg) => (v == null ? "—" : `${neg || v < 0 ? "-" : "+"}${String(Math.abs(Math.round(v))).padStart(2, "0")}`);
+
+  // Datas da CoC vêm como 20261109T120000.000Z.
+  function cocDate(v) {
+    if (!v) return null;
+    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?:\.\d+)?Z$/.exec(String(v));
+    const t = Date.parse(m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : v);
+    return Number.isNaN(t) ? null : t;
+  }
+
+  function ageText(v) {
+    const t = cocDate(v);
+    if (t == null) return "—";
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 3600) return String(Math.max(1, Math.floor(s / 60))).padStart(2, "0") + "m";
+    if (s < 86400) return String(Math.floor(s / 3600)).padStart(2, "0") + "h";
+    return String(Math.floor(s / 86400)).padStart(2, "0") + "d";
+  }
+
+  // Segunda a domingo da semana da ranqueada (calendário de São Paulo, como no !ficha do bot).
+  // `season`: id da semana na CoC (segundos); sem ele, usa a semana de hoje + `offsetWeeks`.
+  function weekLabel(offsetWeeks, season) {
+    const secs = /^\d{10}$/.test(String(season || "")) ? Number(season) : null;
+    const ref = secs ? new Date(secs * 1000) : new Date();
+    const ymdSp = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(ref);
+    const [y, m, d] = ymdSp.split("-").map(Number);
+    const base = new Date(Date.UTC(y, m - 1, d));
+    base.setUTCDate(base.getUTCDate() - ((base.getUTCDay() + 6) % 7) + (secs ? 0 : offsetWeeks) * 7);
+    const end = new Date(base); end.setUTCDate(end.getUTCDate() + 6);
+    const f = (x) => `${String(x.getUTCDate()).padStart(2, "0")} ${MONTHS[x.getUTCMonth()]}`;
+    return `${f(base)} - ${f(end)}`;
+  }
+
+  // Cortes de promoção/rebaixamento (mesma tabela do bot, em % do grupo).
+  const PROMO = { 1: 50, 2: 50, 3: 50, 4: 50, 5: 50, 6: 50, 7: 50, 8: 50, 9: 40, 10: 35, 11: 50, 12: 40, 13: 35, 14: 50, 15: 40, 16: 35, 17: 50, 18: 40, 19: 35, 20: 50, 21: 40, 22: 30, 23: 50, 24: 40, 25: 30, 26: 50, 27: 40, 28: 30, 29: 25, 30: 25, 31: 20, 32: 20, 33: 15, 34: 5, 35: 3 };
+  const demoPct = (r) => (r <= 1 ? 0 : r <= 9 ? 5 : r <= 21 ? 10 : r <= 35 ? 15 : 0);
+  function cutoffs(rank, size) {
+    if (!(rank >= 1 && rank <= 35)) return [null, null];
+    const n = Math.max(1, size || 100), up = PROMO[rank], down = demoPct(rank);
+    return [up ? Math.max(1, Math.floor(n * up / 100)) : null, down ? Math.max(1, n - Math.ceil(n * down / 100) + 1) : null];
+  }
+
+  const starSet = (n) => `<span class="rk-st">${[1, 2, 3].map((i) => ic("star", i <= n ? "" : "is-empty")).join("")}</span>`;
+  const tierOf = (t) => (t ? { rank: t.rank, label: t.label, short: t.short, icon: t.emoji_name } : null);
+
+  // Resume os ataques (ou defesas) de uma semana: distribuição de estrelas e médias.
+  function sideOf(list, max, isDef, legendOne) {
+    const b = (Array.isArray(list) ? list : []).map((x) => ({ trophies: x.trophies || 0, stars: x.stars || 0, destruction: x.destruction || 0, at: x.creation_time }));
+    const n = b.length, negative = !!(isDef && legendOne);
+    const trophyAvg = n ? b.reduce((a, x) => a + Math.abs(x.trophies), 0) / n : null;
+    return {
+      count: n, max, battles: b, negative,
+      stars: [3, 2, 1, 0].map((s) => b.filter((x) => x.stars === s).length),
+      avg_stars: n ? b.reduce((a, x) => a + x.stars, 0) / n : null,
+      avg_trophies: trophyAvg == null ? null : (negative ? -trophyAvg : trophyAvg)
+    };
+  }
+
+  function sumLine(side, label, isDef) {
+    const dist = side.stars ? side.stars.map(p2).join("/") : "??/??/??/??";
+    const avg = side.avg_stars == null ? "—" : side.avg_stars.toFixed(1);
+    return `<li class="${isDef ? "is-def" : ""}"><span class="part">${label} ${p2(side.count)}/${p2(side.max)}</span><span class="sep">—</span>
+      <span class="part"><span class="rk-st">${ic("star")}</span>${dist}</span><span class="sep">—</span>
+      <span class="part">🌟 ${avg}</span><span class="sep">/</span><span class="part">🏆 ${avgTrophies(side.avg_trophies, side.negative)}</span></li>`;
+  }
+
+  function battleList(title, side, isDef) {
+    const rows = side.battles.length
+      ? side.battles.map((b) => `<li class="rk-b${isDef ? " is-def" : ""}"><span class="tr${side.negative ? " neg" : ""}">${signed(b.trophies, side.negative)}</span>${starSet(b.stars)}<span class="pc">${b.destruction}%</span><span class="age">${ageText(b.at)}</span></li>`).join("")
+      : `<li class="rk-none">Nenhum registro ainda.</li>`;
+    return `<div class="rk-col${isDef ? " is-def" : ""}"><h5>${title}</h5><ul class="rk-list">${rows}</ul></div>`;
+  }
+
+  function currentWeek(d) {
+    const head = `<header class="rk-head"><h4 class="rk-title">Semana atual</h4><span class="rk-range">${weekLabel(0)}</span></header>`;
+    if (!d.participating) return `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada nesta semana.</p></section>`;
+    const tier = tierOf(d.tier), legendOne = tier.rank === 36, max = d.max_battles || 0;
+    const [up, down] = cutoffs(tier.rank, d.group_size);
+    const cuts = legendOne ? "" : `<span class="rk-chip"><span class="rk-up">▲</span>${up == null ? "---" : pad3(up)} <span class="rk-down">▼</span>${down == null ? "---" : pad3(down)}</span>`;
+    const place = legendOne ? "" : `<span class="rk-chip">#${d.placement ? pad3(d.placement) : "---"}</span>`;
+    const trophies = d.league_trophies == null ? "" : `<span class="rk-chip">🏆 ${nf(d.league_trophies)}</span>`;
+    const atk = sideOf(d.attacks, max, false, legendOne), def = sideOf(d.defenses, max, true, legendOne);
+    return `<section class="rk-week">${head}
+      <div class="rk-tier">${rankIcon(tier)}<span class="rk-tier-num">${esc(tier.short)}</span>${place}${cuts}${trophies}</div>
+      <ul class="rk-sum">${sumLine(atk, "⚔️", false)}${sumLine(def, "🛡️", true)}</ul>
+      <div class="rk-lists">${battleList("Ataques", atk, false)}${battleList("Defesas", def, true)}</div></section>`;
+  }
+
+  // Resumo agregado (a API só guarda a lista de batalhas da semana atual).
+  function aggSide(count, max, dist, stars, trophyAvg, negative) {
+    return {
+      count: count || 0, max, battles: [], negative,
+      stars: dist || null,
+      avg_stars: count ? (stars || 0) / count : null,
+      avg_trophies: trophyAvg == null ? null : (negative ? -trophyAvg : trophyAvg)
+    };
+  }
+
+  // Semana anterior: relatório da semana (ataques/defesas agregados) quando disponível;
+  // senão, só o resumo `last` (liga, colocação, troféus) da rota do jogador.
+  function previousWeek(d, prev) {
+    const found = prev && prev.found ? prev.found : null;
+    const head = `<header class="rk-head"><h4 class="rk-title">Semana anterior</h4><span class="rk-range">${prev ? weekLabel(-1, prev.season) : weekLabel(-1)}</span></header>`;
+    const none = `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada nesta semana.</p></section>`;
+    if (found) {
+      const p = found.p;
+      if (!p.group_tag && !p.attack_count && !p.defense_count) return none;
+      const from = tierOf(p.previous_tier), to = tierOf(p.current_tier), legendOne = from.rank === 36;
+      const moved = found.cat === "promoted" || found.cat === "demoted";
+      const arrow = moved ? `<span class="rk-arrow ${found.cat === "promoted" ? "rk-up" : "rk-down"}">${found.cat === "promoted" ? "▲" : "▼"}</span>${rankIcon(to)}<span class="rk-tier-num">${esc(to.short)}</span>` : "";
+      const place = p.placement ? `<span class="rk-chip">#${pad3(p.placement)}</span>` : "";
+      const [up, down] = found.cat === "stayed" ? cutoffs(from.rank, p.group_size) : [null, null];
+      const cuts = found.cat === "stayed" ? `<span class="rk-chip"><span class="rk-up">▲</span>${up == null ? "---" : pad3(up)} <span class="rk-down">▼</span>${down == null ? "---" : pad3(down)}</span>` : "";
+      // Os troféus finais só entram se o `last` da rota do jogador for mesmo desta semana (mesma colocação).
+      const l = d.last, same = l && l.trophies != null && p.placement && l.placement === p.placement;
+      const tro = same ? `<span class="rk-chip">🏆 ${nf(l.trophies)}</span>` : "";
+      const atk = aggSide(p.attack_count, p.max_battles, p.attack_distribution, p.attack_stars, p.attack_trophy_average, false);
+      const def = aggSide(p.defense_count, p.max_battles, p.defense_distribution, p.defense_stars, p.defense_trophy_average, legendOne);
+      return `<section class="rk-week">${head}
+      <div class="rk-tier">${rankIcon(from)}<span class="rk-tier-num">${esc(from.short)}</span>${arrow}${place}${cuts}${tro}</div>
+      <ul class="rk-sum">${sumLine(atk, "⚔️", false)}${sumLine(def, "🛡️", true)}</ul>
+      <p class="rk-note">A lista de batalhas só aparece na semana atual.</p></section>`;
+    }
+    const l = d.last;
+    if (!l || !l.tier) return none;
+    const tier = tierOf(l.tier), legendOne = tier.rank === 36;
+    const place = !legendOne && l.placement ? `<span class="rk-chip">#${pad3(l.placement)}</span>` : "";
+    const trophies = l.trophies == null ? "" : `<span class="rk-chip">🏆 ${nf(l.trophies)}</span>`;
+    return `<section class="rk-week">${head}
+      <div class="rk-tier">${rankIcon(tier)}<span class="rk-tier-num">${esc(tier.short)}</span>${place}${trophies}</div>
+      <p class="rk-note">Ataques e defesas só aparecem na semana atual.</p></section>`;
+  }
+
+  // `prev`: { found: { p, cat }|null, season } do relatório da semana anterior, ou null se não carregou.
+  function rankDetail(d, prev) {
+    return `<div class="rk">${currentWeek(d)}${previousWeek(d, prev)}</div>`;
   }
 
   /* ---------- Histórico ---------- */
@@ -173,5 +336,5 @@
     };
   }
 
-  window.TahRender = { esc, dashboard, memberRow, history, mirrorList, ROLES };
+  window.TahRender = { esc, dashboard, memberRow, rankDetail, history, mirrorList, ROLES };
 })();
