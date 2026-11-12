@@ -25,9 +25,9 @@
     const e = enemy ? "-enemy" : "";
     return `<div class="war-team${enemy ? " war-team-enemy" : ""}">
       <span class="war-team-name">${enemy ? "💀 " : ""}${esc(name)}</span>
-      <span class="war-score${enemy ? " war-score-enemy" : ""}">${ic("star")} ${s.stars}</span>
-      <span class="war-bar"><span class="war-bar-fill${enemy ? " war-bar-fill-enemy" : ""}" style="width:${Math.min(100, s.destruction)}%"></span></span>
-      <span class="war-team-sub">💥 ${pct(s.destruction)} · ⚔️ ${s.attacks_used}/${s.attacks_total}</span>
+      <span class="war-score${enemy ? " war-score-enemy" : ""}">${ic("star")} ${s.stars ?? "—"}</span>
+      <span class="war-bar"><span class="war-bar-fill${enemy ? " war-bar-fill-enemy" : ""}" style="width:${Math.min(100, s.destruction || 0)}%"></span></span>
+      <span class="war-team-sub">💥 ${pct(s.destruction)} · ⚔️ ${s.attacks_used ?? "—"}/${s.attacks_total ?? "—"}</span>
     </div>`;
   }
 
@@ -65,24 +65,55 @@
     return `<ul class="esp-list">${items.map((i) => mirrorItem(i, openBases.has(i.position), showLeft)).join("")}</ul>`;
   }
 
+  const WAR_RESULT = { won: ["Vitória", "is-won"], lost: ["Derrota", "is-lost"], tie: ["Empate", "is-tie"] };
+
   function warCard(war, ui) {
     if (!war) {
       return `<div class="acc-item"><div class="acc-btn acc-btn-static"><span class="acc-title">${ic("shield-halved")} Guerra</span><span class="acc-meta">Sem guerra no momento</span></div></div>`;
     }
-    const prep = war.state === "preparation";
+    const prep = war.state === "preparation", ended = war.state === "ended";
     const target = prep ? war.start_time : war.end_time;
-    const meta = (war.type === "cwl" ? `CWL ${war.round ?? "—"}/${war.total_rounds ?? "—"}` : "Guerra normal") + (prep ? " · Preparação" : "");
+    const meta = (war.type === "cwl" ? `CWL ${war.round ?? "—"}/${war.total_rounds ?? "—"}` : "Guerra normal") + (prep ? " · Preparação" : ended ? " · Finalizada" : "");
+    const [resultText, resultCls] = WAR_RESULT[war.result] || ["Finalizada", "is-tie"];
+    const timer = ended
+      ? `<div class="war-timer war-timer-ended"><span class="war-timer-label">Resultado</span>
+          <span class="war-timer-value war-result ${resultCls}">${resultText}</span><span class="war-timer-note">Terminou em ${fdateTime(war.end_time) || "—"}</span></div>`
+      : `<div class="war-timer"><span class="war-timer-label">${prep ? "Começa em" : "Termina em"}</span>
+          <span class="war-timer-value" data-countdown="${esc(target)}">--</span><span class="war-timer-note">${fdateTime(target)}</span></div>`;
+    const mirrors = Array.isArray(war.mirror) && war.mirror.length
+      ? `<button type="button" class="mirrors-toggle" data-mirrors-btn aria-expanded="${ui.mirrorsOpen}"><span data-mirrors-label>${ui.mirrorsOpen ? "Ocultar" : "Detalhes"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
+        <div class="${ui.mirrorsOpen ? "" : "hidden"}" data-mirrors-body>${mirrorList(war.mirror, ui.openBases, !ended)}</div>`
+      : "";
     return `<div class="acc-item is-open">
       <div class="acc-btn acc-btn-static"><span class="acc-title">${ic("shield-halved")} Guerra</span><span class="acc-meta">${ic("trophy")} ${meta}</span></div>
       <div class="acc-body-content">
         <div class="war-board">${side(war.ours.name, war.ours, false)}
-          <div class="war-center"><span class="war-vs">VS</span><span class="war-size">${war.team_size} vs ${war.team_size}</span></div>
+          <div class="war-center"><span class="war-vs">VS</span><span class="war-size">${war.team_size ?? "—"} vs ${war.team_size ?? "—"}</span></div>
           ${side(war.enemy.name, war.enemy, true)}</div>
-        <div class="war-timer"><span class="war-timer-label">${prep ? "Começa em" : "Termina em"}</span>
-          <span class="war-timer-value" data-countdown="${esc(target)}">--</span><span class="war-timer-note">${fdateTime(target)}</span></div>
-        <button type="button" class="mirrors-toggle" data-mirrors-btn aria-expanded="${ui.mirrorsOpen}"><span data-mirrors-label>${ui.mirrorsOpen ? "Ocultar" : "Detalhes"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
-        <div class="${ui.mirrorsOpen ? "" : "hidden"}" data-mirrors-body>${mirrorList(war.mirror, ui.openBases, true)}</div>
+        ${timer}
+        ${mirrors}
       </div></div>`;
+  }
+
+  // Andamento do raid: totais e uma linha por membro (ataques e saque). Só aparece se a API mandar `members`.
+  function raidProgress(raid, on) {
+    const members = Array.isArray(raid.members) ? raid.members : null;
+    if (!members || !members.length) return "";
+    const attacked = members.filter((m) => m.attacks_used > 0).length;
+    const loot = (v) => (v == null ? "—" : nf(v));
+    const row = (m) => {
+      const done = m.attacks_total > 0 && m.attacks_used >= m.attacks_total, none = m.attacks_used === 0;
+      return `<li class="rd-row${done ? " is-done" : none ? " is-none" : ""}"><span class="rd-name">${esc(m.name)}</span>
+        <span class="rd-atk"><span class="lg-emoji">⚔️</span>${m.attacks_used}/${m.attacks_total}</span>
+        <span class="rd-loot"><span class="lg-emoji">💰</span>${loot(m.loot)}</span></li>`;
+    };
+    return `<div class="rd-sum">
+        <div class="rd-stat"><span class="rd-stat-label">Saque</span><span class="rd-stat-value">${nf(raid.total_loot || 0)}</span></div>
+        <div class="rd-stat"><span class="rd-stat-label">Ataques</span><span class="rd-stat-value">${raid.attacks_used}/${raid.attacks_total}</span></div>
+        <div class="rd-stat"><span class="rd-stat-label">Atacaram</span><span class="rd-stat-value">${attacked}/${members.length}</span></div>
+      </div>
+      <p class="rd-title">${on ? "Raid em andamento" : "Último raid"}</p>
+      <ul class="rd-list">${members.map(row).join("")}</ul>`;
   }
 
   function raidCard(raid, ui) {
@@ -95,7 +126,8 @@
         <span class="acc-meta">${ic("clock")} <span data-countdown="${esc(target)}">--</span>${ic("chevron-down", "acc-chevron")}</span></button>
       <div class="acc-body-content${ui.raidOpen ? "" : " hidden"}" data-acc-body>
         <div class="highlight"><span class="hl-label">${on ? "Termina em" : "Início em"}</span>
-          <span class="hl-value" data-countdown="${esc(target)}">--</span><span class="hl-note">${fdateTime(target)}</span></div></div></div>`;
+          <span class="hl-value" data-countdown="${esc(target)}">--</span><span class="hl-note">${fdateTime(target)}</span></div>
+        ${raidProgress(raid, on)}</div></div>`;
   }
 
   function gamesCard(g) {
@@ -135,7 +167,6 @@
   function memberRow(m) {
     const role = ROLES[m.role] || ROLES.member;
     return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}">
-      <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td>
       <td><div class="member-cell"><span class="member-avatar" data-role-tip data-role="${role.label}" tabindex="0" role="button" aria-label="Cargo: ${role.label}">${ic(role.icon)}<span class="role-tip" role="tooltip">${role.label}</span></span><span class="member-name">${esc(m.name)}</span></div></td>
       <td class="cell-center">${rankCell(m.rank)}</td>
       <td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
@@ -144,7 +175,8 @@
         <div class="lg-view lg-view-attack">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)]])}</div>
         <div class="lg-view lg-view-extra">${lgRow([["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div>
       </div></td>
-      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span></div></td></tr>
+      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span></div></td>
+      <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td></tr>
     <tr class="member-detail hidden" data-member-detail-row><td colspan="7"><div class="rk-wrap" data-member-detail></div></td></tr>`;
   }
 
@@ -197,6 +229,36 @@
   const starSet = (n) => `<span class="rk-st">${[1, 2, 3].map((i) => ic("star", i <= n ? "" : "is-empty")).join("")}</span>`;
   const tierOf = (t) => (t ? { rank: t.rank, label: t.label, short: t.short, icon: t.emoji_name } : null);
 
+  // Lenda I é diária: o "dia" da Lenda vira às 05:00 UTC (02:00 em São Paulo). `offset` -1 = dia anterior.
+  function legendDay(offset) {
+    const t = new Date(Date.now() - 5 * 3600 * 1000);
+    t.setUTCDate(t.getUTCDate() + offset);
+    return `${String(t.getUTCDate()).padStart(2, "0")} ${MONTHS[t.getUTCMonth()]}`;
+  }
+  const isLegendOne = (t) => !!t && t.rank === 36;
+
+  // 🔥 Best e 📅 Last, no mesmo formato do /rank do Discord: liga + posição; na Lenda I, troféus + 🌍 global + 📍 local.
+  const rankNo = (n) => `#${String(n).padStart(2, "0")}`;
+  function standingValue(s) {
+    const tier = s && s.tier ? tierOf(s.tier) : null;
+    if (!tier) return `<span class="rk-mark-none">—</span>`;
+    if (isLegendOne(tier)) {
+      const parts = [];
+      if (s.trophies != null) parts.push(`<span class="rk-mark-part">🏆 ${nf(s.trophies)}</span>`);
+      if (s.global_rank) parts.push(`<span class="rk-mark-part" title="Posição global">🌍 ${rankNo(s.global_rank)}</span>`);
+      if (s.local_rank) parts.push(`<span class="rk-mark-part" title="Posição local">📍 ${rankNo(s.local_rank)}</span>`);
+      return `${rankIcon(tier)}<span class="rk-mark-tier">${esc(tier.short)}</span>${parts.join("")}`;
+    }
+    const place = s.placement ? `<span class="rk-mark-part">${rankNo3(s.placement)}</span>` : "";
+    return `${rankIcon(tier)}<span class="rk-mark-tier">${esc(tier.short)}</span>${place}`;
+  }
+  const rankNo3 = (n) => `#${pad3(n)}`;
+  function marks(d) {
+    if (!d || (!d.best && !d.last)) return "";
+    const mark = (emoji, label, s) => `<div class="rk-mark"><span class="rk-mark-label"><span class="lg-emoji">${emoji}</span>${label}</span><span class="rk-mark-val">${standingValue(s)}</span></div>`;
+    return `<div class="rk-marks">${mark("🔥", "Best", d.best)}${mark("📅", "Last", d.last)}</div>`;
+  }
+
   // Resume os ataques (ou defesas) de uma semana: distribuição de estrelas e médias.
   function sideOf(list, max, isDef, legendOne) {
     const b = (Array.isArray(list) ? list : []).map((x) => ({ trophies: x.trophies || 0, stars: x.stars || 0, destruction: x.destruction || 0, at: x.creation_time }));
@@ -218,16 +280,17 @@
       <span class="part">🌟 ${avg}</span><span class="sep">/</span><span class="part">🏆 ${avgTrophies(side.avg_trophies, side.negative)}</span></li>`;
   }
 
-  function battleList(title, side, isDef) {
+  function battleList(title, side, isDef, emptyText) {
     const rows = side.battles.length
       ? side.battles.map((b) => `<li class="rk-b${isDef ? " is-def" : ""}"><span class="tr${side.negative ? " neg" : ""}">${signed(b.trophies, side.negative)}</span>${starSet(b.stars)}<span class="pc">${b.destruction}%</span><span class="age">${ageText(b.at)}</span></li>`).join("")
-      : `<li class="rk-none">Nenhum registro ainda.</li>`;
+      : `<li class="rk-none">${emptyText || "Nenhum registro ainda."}</li>`;
     return `<div class="rk-col${isDef ? " is-def" : ""}"><h5>${title}</h5><ul class="rk-list">${rows}</ul></div>`;
   }
 
   function currentWeek(d) {
-    const head = `<header class="rk-head"><h4 class="rk-title">Semana atual</h4><span class="rk-range">${weekLabel(0)}</span></header>`;
-    if (!d.participating) return `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada nesta semana.</p></section>`;
+    const day = isLegendOne(d.tier);
+    const head = `<header class="rk-head"><h4 class="rk-title">${day ? "Dia atual" : "Semana atual"}</h4><span class="rk-range">${day ? legendDay(0) : weekLabel(0)}</span></header>`;
+    if (!d.participating) return `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada ${day ? "hoje" : "nesta semana"}.</p></section>`;
     const tier = tierOf(d.tier), legendOne = tier.rank === 36, max = d.max_battles || 0;
     const [up, down] = cutoffs(tier.rank, d.group_size);
     const cuts = legendOne ? "" : `<span class="rk-chip"><span class="rk-up">▲</span>${up == null ? "---" : pad3(up)} <span class="rk-down">▼</span>${down == null ? "---" : pad3(down)}</span>`;
@@ -250,12 +313,32 @@
     };
   }
 
+  // Máximo de batalhas por liga (mesma tabela do bot), usado quando só temos o resumo `last`.
+  const maxBattles = (r) => (r >= 1 && r <= 6 ? 6 : r <= 12 ? 8 : r <= 18 ? 10 : r <= 27 ? 12 : r <= 30 ? 14 : r <= 33 ? 18 : r === 34 ? 24 : r === 35 ? 30 : r === 36 ? 8 : 0);
+
+  // Batalhas da semana anterior (campos `previous_*` da rota do jogador). Só valem se forem da mesma semana do relatório.
+  function prevBattles(d, prev) {
+    const atk = d.previous_attacks || [], def = d.previous_defenses || [];
+    const same = !prev || String(prev.season) === String(d.previous_season_id);
+    return d.previous_season_id && same && (atk.length || def.length) ? { atk, def } : null;
+  }
+  const prevLists = (b, max, legendOne) => {
+    const a = sideOf(b.atk, max, false, legendOne), f = sideOf(b.def, max, true, legendOne);
+    return `<div class="rk-lists">${battleList("Ataques", a, false, "Nenhum registro.")}${battleList("Defesas", f, true, "Nenhum registro.")}</div>`;
+  };
+
   // Semana anterior: relatório da semana (ataques/defesas agregados) quando disponível;
   // senão, só o resumo `last` (liga, colocação, troféus) da rota do jogador.
+  // Se a rota do jogador mandar as batalhas da semana (`previous_*`), a lista aparece também.
   function previousWeek(d, prev) {
     const found = prev && prev.found ? prev.found : null;
-    const head = `<header class="rk-head"><h4 class="rk-title">Semana anterior</h4><span class="rk-range">${prev ? weekLabel(-1, prev.season) : weekLabel(-1)}</span></header>`;
-    const none = `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada nesta semana.</p></section>`;
+    // Na Lenda I o período é o dia: vale a liga da semana anterior (`found`) ou, sem ela, a do `last`.
+    const day = found ? isLegendOne(found.p.previous_tier) : isLegendOne(d.last && d.last.tier);
+    const range = day ? legendDay(-1) : prev ? weekLabel(-1, prev.season) : weekLabel(-1, d.previous_season_id);
+    const head = `<header class="rk-head"><h4 class="rk-title">${day ? "Dia anterior" : "Semana anterior"}</h4><span class="rk-range">${range}</span></header>`;
+    const none = `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada ${day ? "neste dia" : "nesta semana"}.</p></section>`;
+    const battles = prevBattles(d, prev);
+    const noteOnly = `<p class="rk-note">A lista de batalhas só aparece ${day ? "no dia atual" : "na semana atual"}.</p>`;
     if (found) {
       const p = found.p;
       if (!p.group_tag && !p.attack_count && !p.defense_count) return none;
@@ -264,7 +347,7 @@
       const arrow = moved ? `<span class="rk-arrow ${found.cat === "promoted" ? "rk-up" : "rk-down"}">${found.cat === "promoted" ? "▲" : "▼"}</span>${rankIcon(to)}<span class="rk-tier-num">${esc(to.short)}</span>` : "";
       const place = p.placement ? `<span class="rk-chip">#${pad3(p.placement)}</span>` : "";
       const [up, down] = found.cat === "stayed" ? cutoffs(from.rank, p.group_size) : [null, null];
-      const cuts = found.cat === "stayed" ? `<span class="rk-chip"><span class="rk-up">▲</span>${up == null ? "---" : pad3(up)} <span class="rk-down">▼</span>${down == null ? "---" : pad3(down)}</span>` : "";
+      const cuts = found.cat === "stayed" && !legendOne ? `<span class="rk-chip"><span class="rk-up">▲</span>${up == null ? "---" : pad3(up)} <span class="rk-down">▼</span>${down == null ? "---" : pad3(down)}</span>` : "";
       // Os troféus finais só entram se o `last` da rota do jogador for mesmo desta semana (mesma colocação).
       const l = d.last, same = l && l.trophies != null && p.placement && l.placement === p.placement;
       const tro = same ? `<span class="rk-chip">🏆 ${nf(l.trophies)}</span>` : "";
@@ -273,21 +356,28 @@
       return `<section class="rk-week">${head}
       <div class="rk-tier">${rankIcon(from)}<span class="rk-tier-num">${esc(from.short)}</span>${arrow}${place}${cuts}${tro}</div>
       <ul class="rk-sum">${sumLine(atk, "⚔️", false)}${sumLine(def, "🛡️", true)}</ul>
-      <p class="rk-note">A lista de batalhas só aparece na semana atual.</p></section>`;
+      ${battles ? prevLists(battles, p.max_battles, legendOne) : noteOnly}</section>`;
     }
     const l = d.last;
     if (!l || !l.tier) return none;
     const tier = tierOf(l.tier), legendOne = tier.rank === 36;
     const place = !legendOne && l.placement ? `<span class="rk-chip">#${pad3(l.placement)}</span>` : "";
     const trophies = l.trophies == null ? "" : `<span class="rk-chip">🏆 ${nf(l.trophies)}</span>`;
+    if (battles) {
+      const max = maxBattles(tier.rank), a = sideOf(battles.atk, max, false, legendOne), f = sideOf(battles.def, max, true, legendOne);
+      return `<section class="rk-week">${head}
+      <div class="rk-tier">${rankIcon(tier)}<span class="rk-tier-num">${esc(tier.short)}</span>${place}${trophies}</div>
+      <ul class="rk-sum">${sumLine(a, "⚔️", false)}${sumLine(f, "🛡️", true)}</ul>
+      ${prevLists(battles, max, legendOne)}</section>`;
+    }
     return `<section class="rk-week">${head}
       <div class="rk-tier">${rankIcon(tier)}<span class="rk-tier-num">${esc(tier.short)}</span>${place}${trophies}</div>
-      <p class="rk-note">Ataques e defesas só aparecem na semana atual.</p></section>`;
+      <p class="rk-note">Ataques e defesas só aparecem ${day ? "no dia atual" : "na semana atual"}.</p></section>`;
   }
 
   // `prev`: { found: { p, cat }|null, season } do relatório da semana anterior, ou null se não carregou.
   function rankDetail(d, prev) {
-    return `<div class="rk">${currentWeek(d)}${previousWeek(d, prev)}</div>`;
+    return `${marks(d)}<div class="rk">${currentWeek(d)}${previousWeek(d, prev)}</div>`;
   }
 
   /* ---------- Histórico ---------- */

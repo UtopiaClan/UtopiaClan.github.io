@@ -61,8 +61,22 @@
     if (expired && Date.now() - lastDash > 10000) loadDashboard();
   }
 
+  // Troca o escudo do cabeçalho pelo emblema do clã. Só entra depois de carregar; se falhar, fica o escudo.
+  let badgeTried = "";
+  function applyBadge(url) {
+    const mark = $(".clan-badge-mark");
+    if (!mark || !/^https:\/\//.test(url || "") || url === badgeTried) return;
+    badgeTried = url;
+    const img = new Image();
+    img.alt = "";
+    img.decoding = "async";
+    img.onload = () => { mark.replaceChildren(img); mark.classList.add("has-img"); };
+    img.src = url;
+  }
+
   function applyClan(clan) {
     if (!clan) return;
+    applyBadge(clan.badge_url);
     clanName = clan.name || clanName;
     const logo = $("#clanName"); if (logo) logo.textContent = clanName;
     if (clan.tag) { copyBtn.dataset.clanTag = clan.tag; if (!copyBtn.classList.contains("is-copied")) copyBtn.textContent = clan.tag; }
