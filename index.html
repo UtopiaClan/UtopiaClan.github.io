@@ -62,14 +62,15 @@
         </div>
         <p class="mt-2 text-xs t-m"><span id="membersVisibleCount">0</span> de <span id="membersTotal">0</span> membros · ordenados por liga e troféus</p>
         <div class="mt-6 overflow-x-auto">
-            <table class="data-table w-full minw" data-lg-table data-lg-view="attack">
+            <table class="data-table w-full minw">
                 <thead><tr>
                     <th scope="col">Membro</th><th scope="col" class="cell-center">Rank</th><th scope="col" class="cell-center">Centro de Vila</th><th scope="col" class="cell-center">Desde</th>
-                    <th scope="col" class="cell-center"><button type="button" class="lg-toggle" data-lg-toggle aria-pressed="false" title="Alternar entre participação e faltas/bônus"><span data-lg-toggle-label>Ligas / Guerras</span></button></th>
+                    <th scope="col" class="cell-center">Ligas / Guerras</th>
+                    <th scope="col" class="cell-center">Faltas / Bônus</th>
                     <th scope="col" class="cell-center">Raids</th>
                     <th scope="col" class="cell-toggle"><span class="sr-only">Detalhes</span></th>
                 </tr></thead>
-                <tbody id="membersBody"><tr><td colspan="7" class="loading">Carregando membros…</td></tr></tbody>
+                <tbody id="membersBody"><tr><td colspan="8" class="loading">Carregando membros…</td></tr></tbody>
             </table>
         </div>
         <p id="membersEmpty" class="hidden mt-6 rounded-2xl border bd-g bg-e p-5 text-center text-sm t-m">Nenhum membro encontrado com os filtros selecionados.</p>

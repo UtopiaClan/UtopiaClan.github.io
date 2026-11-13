@@ -6,7 +6,7 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  const ui = { mirrorsOpen: false, openBases: new Set(), raidOpen: new Set(), openMembers: new Set() };
+  const ui = { mirrorsOpen: false, openBases: new Set(), raidCard: false, raidOpen: new Set(), openMembers: new Set() };
   const memberCache = {}; // tag -> { at, data } (ranqueada de cada membro, nada é guardado no servidor)
   const pending = {};     // tag -> promessa em andamento (evita pedir a mesma ranqueada duas vezes)
   const state = { members: [], ranks: null }; // ranks: Map tag -> liga (vem de outra rota, chega depois)
@@ -319,17 +319,16 @@
     if ((el = hit("[data-raid-btn]"))) {
       const key = el.dataset.raidBtn;
       toggle(el, $('[data-raid-body="' + key + '"]', el.closest("[data-raid]"))) ? ui.raidOpen.add(key) : ui.raidOpen.delete(key);
+    } else if ((el = hit("[data-acc-btn]"))) {
+      const item = el.closest("[data-acc]");
+      ui.raidCard = toggle(el, $("[data-acc-body]", item));
+      item.classList.toggle("is-open", ui.raidCard);
     } else if ((el = hit("[data-mirrors-btn]"))) {
       ui.mirrorsOpen = toggle(el, $("[data-mirrors-body]"));
       $("[data-mirrors-label]", el).textContent = ui.mirrorsOpen ? "Ocultar" : "Detalhes";
     } else if ((el = hit("[data-mirror-btn]"))) {
       const item = el.closest("[data-mirror-item]"), open = toggle(el, $("[data-mirror-detail]", item));
       if (item.closest("[data-mirrors-body]")) open ? ui.openBases.add(+item.dataset.pos) : ui.openBases.delete(+item.dataset.pos);
-    } else if ((el = hit("[data-lg-toggle]"))) {
-      const table = $("[data-lg-table]"), extra = table.dataset.lgView === "attack";
-      table.dataset.lgView = extra ? "extra" : "attack";
-      el.setAttribute("aria-pressed", extra);
-      $("[data-lg-toggle-label]").textContent = extra ? "Faltas / Bônus" : "Ligas / Guerras";
     } else if ((el = hit("[data-member-toggle]"))) {
       const row = el.closest("[data-member-row]"), tag = row.dataset.memberTag, open = el.getAttribute("aria-expanded") !== "true";
       el.setAttribute("aria-expanded", open);

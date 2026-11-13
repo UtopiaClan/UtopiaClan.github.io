@@ -106,22 +106,20 @@
     const played = members.filter((m) => m.attacks_used > 0)
       .sort((a, b) => (b.loot || 0) - (a.loot || 0) || b.attacks_used - a.attacks_used || String(a.name).localeCompare(String(b.name)));
     const idle = members.filter((m) => !(m.attacks_used > 0));
-    const top = Math.max(1, ...played.map((m) => m.loot || 0));
     const used = raid.attacks_used || 0, total = raid.attacks_total || 0;
-    const share = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
     const medal = ["🥇", "🥈", "🥉"];
     const row = (m, i) => {
       const done = m.attacks_total > 0 && m.attacks_used >= m.attacks_total;
       const pos = withLoot && i < 3 && m.loot > 0 ? medal[i] : i + 1;
       return `<li class="rd-row${done ? " is-done" : ""}"><span class="rd-pos">${pos}</span>
-        <span class="rd-main"><span class="rd-name">${esc(m.name)}</span>${withLoot ? `<span class="rd-bar"><span class="rd-bar-fill" style="width:${Math.max(3, share(m.loot || 0, top))}%"></span></span>` : ""}</span>
+        <span class="rd-main"><span class="rd-name">${esc(m.name)}</span></span>
         <span class="rd-atk">${m.attacks_used}/${m.attacks_total}</span>${withLoot ? `<span class="rd-loot">${nf(m.loot || 0)}</span>` : ""}</li>`;
     };
     const period = raid.start_time && raid.end_time ? `<p class="rd-period">${fday(raid.start_time)} a ${fday(raid.end_time)}</p>` : "";
     return `${period}<div class="rd-sum">
         ${withLoot ? `<div class="rd-stat"><span class="rd-stat-label">💰 Saque</span><span class="rd-stat-value">${nf(raid.total_loot || 0)}</span></div>` : ""}
-        <div class="rd-stat"><span class="rd-stat-label">⚔️ Ataques</span><span class="rd-stat-value">${used}/${total}</span><span class="rd-meter"><span style="width:${share(used, total)}%"></span></span></div>
-        <div class="rd-stat"><span class="rd-stat-label">👥 Atacaram</span><span class="rd-stat-value">${played.length}/${members.length}</span><span class="rd-meter"><span style="width:${share(played.length, members.length)}%"></span></span></div>
+        <div class="rd-stat"><span class="rd-stat-label">⚔️ Ataques</span><span class="rd-stat-value">${used}/${total}</span></div>
+        <div class="rd-stat"><span class="rd-stat-label">👥 Atacaram</span><span class="rd-stat-value">${played.length}/${members.length}</span></div>
       </div>
       ${played.length ? `<p class="rd-title">${withLoot ? "Ranking de saque" : "Quem atacou"}</p><ul class="rd-list">${played.map(row).join("")}</ul>` : ""}
       ${idle.length ? `<p class="rd-title">Sem ataques · ${idle.length}</p><div class="rd-chips">${idle.map((m) => `<span class="rd-chip">${esc(m.name)}</span>`).join("")}</div>` : ""}`;
@@ -141,9 +139,11 @@
       return `<button type="button" class="mirrors-toggle" data-raid-btn="${b.key}" aria-expanded="${open}"><span>${b.label}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
         <div class="rd-body${open ? "" : " hidden"}" data-raid-body="${b.key}">${b.html}</div>`;
     }).join("");
-    return `<div class="acc-item is-open" data-raid>
-      <div class="acc-btn acc-btn-static"><span class="acc-title">${ic("dungeon")} Raid</span><span class="acc-meta">${ic("clock")} ${on ? "Em andamento" : "Aguardando"}</span></div>
-      <div class="acc-body-content">
+    return `<div class="acc-item${ui.raidCard ? " is-open" : ""}" data-acc data-raid>
+      <button type="button" class="acc-btn" data-acc-btn aria-expanded="${ui.raidCard}">
+        <span class="acc-title">${ic("dungeon")} Raid</span>
+        <span class="acc-meta">${ic("clock")} <span data-countdown="${esc(target)}">--</span>${ic("chevron-down", "acc-chevron")}</span></button>
+      <div class="acc-body-content${ui.raidCard ? "" : " hidden"}" data-acc-body>
         <div class="highlight"><span class="hl-label">${on ? "Termina em" : "Início em"}</span>
           <span class="hl-value" data-countdown="${esc(target)}">--</span><span class="hl-note">${fdateTime(target)}</span></div>
         ${buttons}</div></div>`;
@@ -183,6 +183,12 @@
     return `<div class="rank-cell">${rankIcon(rank)}<span class="rank-text"><span class="rank-num"><span class="rank-short">${esc(rank.short)}</span><span class="rank-label">${esc(rank.label)}</span></span><span class="rank-trophy">${trophy}</span></span></div>`;
   }
 
+  // Melhor raid do membro: o fim de semana com mais saque (todos os ataques somados).
+  function raidBest(raids) {
+    if (!raids || !raids.best_loot) return "";
+    return `<span class="raid-best" title="Melhor saque de um fim de semana de raid"><span class="lg-emoji">💰</span>${nf(raids.best_loot)}</span>`;
+  }
+
   function memberRow(m) {
     const role = ROLES[m.role] || ROLES.member;
     return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}">
@@ -190,13 +196,11 @@
       <td class="cell-center">${rankCell(m.rank)}</td>
       <td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
-      <td class="cell-center"><div class="lg-cell">
-        <div class="lg-view lg-view-attack">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)]])}</div>
-        <div class="lg-view lg-view-extra">${lgRow([["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div>
-      </div></td>
-      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span></div></td>
+      <td class="cell-center"><div class="lg-cell">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)]])}</div></td>
+      <td class="cell-center"><div class="lg-cell">${lgRow([["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div></td>
+      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span>${raidBest(m.raids)}</div></td>
       <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td></tr>
-    <tr class="member-detail hidden" data-member-detail-row><td colspan="7"><div class="rk-wrap" data-member-detail></div></td></tr>`;
+    <tr class="member-detail hidden" data-member-detail-row><td colspan="8"><div class="rk-wrap" data-member-detail></div></td></tr>`;
   }
 
   /* ---------- Ranqueada do membro (semana atual e anterior) ---------- */
