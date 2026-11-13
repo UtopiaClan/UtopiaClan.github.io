@@ -196,11 +196,10 @@
       <td class="cell-center">${rankCell(m.rank)}</td>
       <td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
-      <td class="cell-center"><div class="lg-cell">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)]])}</div></td>
-      <td class="cell-center"><div class="lg-cell">${lgRow([["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div></td>
+      <td class="cell-center"><div class="lg-cell">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)], ["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)], ["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div></td>
       <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span>${raidBest(m.raids)}</div></td>
       <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td></tr>
-    <tr class="member-detail hidden" data-member-detail-row><td colspan="8"><div class="rk-wrap" data-member-detail></div></td></tr>`;
+    <tr class="member-detail hidden" data-member-detail-row><td colspan="7"><div class="rk-wrap" data-member-detail></div></td></tr>`;
   }
 
   /* ---------- Ranqueada do membro (semana atual e anterior) ---------- */
