@@ -200,7 +200,8 @@
   function membersHead(view) {
     const cols = (MEMBER_VIEWS[view] || MEMBER_VIEWS.geral)
       .map(([e, t]) => `<th scope="col" class="cell-center" title="${t === "CV" ? "Centro de Vila" : t}">${e ? `${e}<span class="th-t"> ${t}</span>` : t}</th>`).join("");
-    return `<tr><th scope="col">Membro</th>${cols}<th scope="col" class="cell-toggle"><span class="sr-only">Detalhes</span></th></tr>`;
+    const toggle = view === "geral" ? `<th scope="col" class="cell-toggle"><span class="sr-only">Detalhes</span></th>` : ""; // só o Geral expande (ranqueada)
+    return `<tr><th scope="col">Membro</th>${cols}${toggle}</tr>`;
   }
   // Best/Last na tabela: liga + posição (ou troféus na Lenda I), no mesmo formato do card ao expandir.
   const standingTitle = (s) => {
@@ -208,12 +209,12 @@
     const p = [s.global_rank ? "🌍 " + rankNo(s.global_rank) : "", s.local_rank ? "📍 " + rankNo(s.local_rank) : ""].filter(Boolean);
     return p.length ? ` title="${p.join("  ")}"` : "";
   };
-  const standingCell = (s) => `<td class="cell-center">${s && s.tier ? `<div class="rk-mark-val st-cell"${standingTitle(s)}>${standingValue(s, true)}</div>` : `<span class="join-date">—</span>`}</td>`;
+  const standingCell = (s, which) => `<td class="cell-center" data-st="${which}">${s && s.tier ? `<div class="rk-mark-val st-cell"${standingTitle(s)}>${standingValue(s, true)}</div>` : `<span class="join-date">—</span>`}</td>`;
   function memberCells(m, view) {
     if (view === "geral") {
       return `<td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
-      <td class="cell-center">${rankCell(m.rank)}</td>${standingCell(m.best)}${standingCell(m.last)}`;
+      <td class="cell-center">${rankCell(m.rank)}</td>${standingCell(m.best, "best")}${standingCell(m.last, "last")}`;
     }
     if (view === "raid") {
       return `<td class="cell-center"><span class="raid-chip">${p2(m.raids.played)}/${p2(m.raids.total)}</span></td>
@@ -227,9 +228,9 @@
     const role = ROLES[m.role] || ROLES.member;
     return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}" data-member-cv="${m.town_hall || ""}">
       <td><div class="member-cell"><span class="member-avatar" data-role-tip data-role="${role.label}" tabindex="0" role="button" aria-label="Cargo: ${role.label}">${ic(role.icon)}<span class="role-tip" role="tooltip">${role.label}</span></span><span class="member-name">${esc(m.name)}</span></div></td>
-      ${memberCells(m, view)}
+      ${memberCells(m, view)}${view === "geral" ? `
       <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td></tr>
-    <tr class="member-detail hidden" data-member-detail-row><td colspan="99"><div class="rk-wrap" data-member-detail></div></td></tr>`;
+    <tr class="member-detail hidden" data-member-detail-row><td colspan="99"><div class="rk-wrap" data-member-detail></div></td></tr>` : "</tr>"}`;
   }
 
   /* ---------- Ranqueada do membro (semana atual e anterior) ---------- */
@@ -306,12 +307,6 @@
     return `${rankIcon(tier)}<span class="rk-mark-tier">${esc(tier.short)}</span>${place}`;
   }
   const rankNo3 = (n) => `#${pad3(n)}`;
-  function marks(d) {
-    if (!d || (!d.best && !d.last)) return "";
-    const mark = (emoji, label, s) => `<div class="rk-mark"><span class="rk-mark-label"><span class="lg-emoji">${emoji}</span>${label}</span><span class="rk-mark-val">${standingValue(s)}</span></div>`;
-    return `<div class="rk-marks">${mark("🔥", "Best", d.best)}${mark("📅", "Last", d.last)}</div>`;
-  }
-
   // Resume os ataques (ou defesas) de uma semana: distribuição de estrelas e médias.
   function sideOf(list, max, isDef, legendOne) {
     const b = (Array.isArray(list) ? list : []).map((x) => ({ trophies: x.trophies || 0, stars: x.stars || 0, destruction: x.destruction || 0, at: x.creation_time }));
@@ -432,7 +427,7 @@
 
   // `prev`: { found: { p, cat }|null, season } do relatório da semana anterior, ou null se não carregou.
   function rankDetail(d, prev, loadingPrev) {
-    return `${marks(d)}<div class="rk">${currentWeek(d)}${previousWeek(d, prev, loadingPrev)}</div>`;
+    return `<div class="rk">${currentWeek(d)}${previousWeek(d, prev, loadingPrev)}</div>`;
   }
 
   /* ---------- Histórico ---------- */
@@ -481,5 +476,5 @@
     };
   }
 
-  window.TahRender = { esc, dashboard, memberRow, membersHead, rankDetail, history, mirrorList, ROLES };
+  window.TahRender = { esc, dashboard, memberRow, membersHead, standingCell, rankDetail, history, mirrorList, ROLES };
 })();

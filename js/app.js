@@ -203,9 +203,10 @@
     $("#membersBody").innerHTML = orderedMembers().map((m) => R.memberRow(m, ui.membersView)).join("");
     $("#membersTotal").textContent = state.members.length;
     $$("[data-member-row]").forEach((row) => { // reabre quem estava aberto antes da atualização
-      if (!ui.openMembers.has(row.dataset.memberTag)) return;
+      const btn = $("[data-member-toggle]", row);
+      if (!btn || !ui.openMembers.has(row.dataset.memberTag)) return; // só o Geral tem detalhe
       row.dataset.open = "1";
-      $("[data-member-toggle]", row).setAttribute("aria-expanded", "true");
+      btn.setAttribute("aria-expanded", "true");
       loadMemberDetail(row);
     });
     filterMembers();
@@ -220,6 +221,39 @@
       state.ranks = map;
       renderMembers();
     } catch (e) { loaded.ranks = 0; /* a lista segue sem a coluna de rank e tenta de novo na próxima visita */ }
+    loadStandings();
+  }
+
+  // Best/Last de todos os membros, sem precisar expandir: o que a lista da ranqueada não trouxer vem da rota de cada
+  // jogador, aos poucos (3 por vez) e em segundo plano. Cada linha é atualizada no lugar quando o dado chega.
+  const STANDINGS_PARALLEL = 3;
+  let standingsRun = false;
+  const hasStanding = (tag) => { const r = state.ranks && state.ranks.get(tag); return !!(memberCache[tag] || (r && (r.best || r.last))); };
+  function fillStanding(tag) {
+    if (ui.membersView !== "geral") return;
+    const row = $('[data-member-row][data-member-tag="' + tag + '"]'), c = memberCache[tag] && memberCache[tag].data;
+    if (!row || !c) return;
+    ["best", "last"].forEach((k) => {
+      const td = $('[data-st="' + k + '"]', row);
+      if (td) td.outerHTML = R.standingCell(c[k], k);
+    });
+  }
+  function loadStandings() {
+    if (standingsRun) return;
+    const queue = state.members.map((m) => m.tag).filter((t) => !hasStanding(t));
+    if (!queue.length) return;
+    standingsRun = true;
+    let active = 0;
+    const next = () => {
+      if (!queue.length) {
+        if (!active) { standingsRun = false; if (["best", "last"].includes(ui.membersSort)) renderMembers(); }
+        return;
+      }
+      const tag = queue.shift();
+      active++;
+      fetchDetail(tag).then(() => fillStanding(tag), () => {}).finally(() => { active--; next(); });
+    };
+    for (let i = 0; i < STANDINGS_PARALLEL; i++) next();
   }
 
   async function loadMembers() {
