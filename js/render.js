@@ -14,6 +14,7 @@
   const p2 = (n) => String(n ?? 0).padStart(2, "0");
   const pct = (n) => (n == null ? "—" : Number(n).toFixed(1).replace(".", ",") + "%");
   const fdate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
+  const fday = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—");
   const fdateTime = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
   const seasonLabel = (key) => { const [y, m] = key.split("-"); return `CWL ${MONTHS[+m - 1]} ${y}`; };
   const stars = (n, cls) => [1, 2, 3].map((i) => ic("star", i <= n ? "" : "is-empty")).join("");
@@ -24,7 +25,7 @@
   function side(name, s, enemy) {
     const e = enemy ? "-enemy" : "";
     return `<div class="war-team${enemy ? " war-team-enemy" : ""}">
-      <span class="war-team-name">${enemy ? "💀 " : ""}${esc(name)}</span>
+      <span class="war-team-name">${enemy ? "💀 " : "💫 "}${esc(name)}</span>
       <span class="war-score${enemy ? " war-score-enemy" : ""}">${ic("star")} ${s.stars ?? "—"}</span>
       <span class="war-bar"><span class="war-bar-fill${enemy ? " war-bar-fill-enemy" : ""}" style="width:${Math.min(100, s.destruction || 0)}%"></span></span>
       <span class="war-team-sub">💥 ${pct(s.destruction)} · ⚔️ ${s.attacks_used ?? "—"}/${s.attacks_total ?? "—"}</span>
@@ -43,6 +44,7 @@
   function mirrorItem(item, open, showLeft) {
     const o = item.ours || {}, e = item.enemy || {};
     const left = (s) => (showLeft && s.attacks_left > 0 ? `<span class="esp-left">${s.attacks_left} Atk</span>` : "");
+    const cv = (s) => (s.town_hall ? "CV" + s.town_hall : "CV—");
     return `<li class="esp-item" data-mirror-item data-pos="${item.position}">
       <div class="esp-main"><div class="esp-info">
         <div class="esp-line">
@@ -51,6 +53,7 @@
         </div>
         <div class="esp-line esp-line-sub">
           <div class="esp-side">${starsWrap(o.stars || 0, "esp-stars")}${left(o)}</div>
+          <span class="esp-th" title="Centro de vila: nosso x inimigo"><b>${cv(o)}</b><i>vs</i><b class="is-enemy">${cv(e)}</b></span>
           <div class="esp-side esp-side-enemy">${left(e)}${starsWrap(e.stars || 0, "esp-stars esp-stars-enemy")}</div>
         </div>
       </div>
@@ -95,39 +98,55 @@
       </div></div>`;
   }
 
-  // Andamento do raid: totais e uma linha por membro (ataques e saque). Só aparece se a API mandar `members`.
-  function raidProgress(raid, on) {
-    const members = Array.isArray(raid.members) ? raid.members : null;
-    if (!members || !members.length) return "";
-    const attacked = members.filter((m) => m.attacks_used > 0).length;
-    const loot = (v) => (v == null ? "—" : nf(v));
-    const row = (m) => {
-      const done = m.attacks_total > 0 && m.attacks_used >= m.attacks_total, none = m.attacks_used === 0;
-      return `<li class="rd-row${done ? " is-done" : none ? " is-none" : ""}"><span class="rd-name">${esc(m.name)}</span>
-        <span class="rd-atk"><span class="lg-emoji">⚔️</span>${m.attacks_used}/${m.attacks_total}</span>
-        <span class="rd-loot"><span class="lg-emoji">💰</span>${loot(m.loot)}</span></li>`;
+  // Dados de um raid: totais, ranking de saque e quem não atacou. Só aparece se a API mandar `members`.
+  function raidDetails(raid) {
+    const members = Array.isArray(raid.members) ? raid.members : [];
+    if (!members.length) return "";
+    const withLoot = members.some((m) => m.loot != null);
+    const played = members.filter((m) => m.attacks_used > 0)
+      .sort((a, b) => (b.loot || 0) - (a.loot || 0) || b.attacks_used - a.attacks_used || String(a.name).localeCompare(String(b.name)));
+    const idle = members.filter((m) => !(m.attacks_used > 0));
+    const top = Math.max(1, ...played.map((m) => m.loot || 0));
+    const used = raid.attacks_used || 0, total = raid.attacks_total || 0;
+    const share = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
+    const medal = ["🥇", "🥈", "🥉"];
+    const row = (m, i) => {
+      const done = m.attacks_total > 0 && m.attacks_used >= m.attacks_total;
+      const pos = withLoot && i < 3 && m.loot > 0 ? medal[i] : i + 1;
+      return `<li class="rd-row${done ? " is-done" : ""}"><span class="rd-pos">${pos}</span>
+        <span class="rd-main"><span class="rd-name">${esc(m.name)}</span>${withLoot ? `<span class="rd-bar"><span class="rd-bar-fill" style="width:${Math.max(3, share(m.loot || 0, top))}%"></span></span>` : ""}</span>
+        <span class="rd-atk">${m.attacks_used}/${m.attacks_total}</span>${withLoot ? `<span class="rd-loot">${nf(m.loot || 0)}</span>` : ""}</li>`;
     };
-    return `<div class="rd-sum">
-        <div class="rd-stat"><span class="rd-stat-label">Saque</span><span class="rd-stat-value">${nf(raid.total_loot || 0)}</span></div>
-        <div class="rd-stat"><span class="rd-stat-label">Ataques</span><span class="rd-stat-value">${raid.attacks_used}/${raid.attacks_total}</span></div>
-        <div class="rd-stat"><span class="rd-stat-label">Atacaram</span><span class="rd-stat-value">${attacked}/${members.length}</span></div>
+    const period = raid.start_time && raid.end_time ? `<p class="rd-period">${fday(raid.start_time)} a ${fday(raid.end_time)}</p>` : "";
+    return `${period}<div class="rd-sum">
+        ${withLoot ? `<div class="rd-stat"><span class="rd-stat-label">💰 Saque</span><span class="rd-stat-value">${nf(raid.total_loot || 0)}</span></div>` : ""}
+        <div class="rd-stat"><span class="rd-stat-label">⚔️ Ataques</span><span class="rd-stat-value">${used}/${total}</span><span class="rd-meter"><span style="width:${share(used, total)}%"></span></span></div>
+        <div class="rd-stat"><span class="rd-stat-label">👥 Atacaram</span><span class="rd-stat-value">${played.length}/${members.length}</span><span class="rd-meter"><span style="width:${share(played.length, members.length)}%"></span></span></div>
       </div>
-      <p class="rd-title">${on ? "Raid em andamento" : "Último raid"}</p>
-      <ul class="rd-list">${members.map(row).join("")}</ul>`;
+      ${played.length ? `<p class="rd-title">${withLoot ? "Ranking de saque" : "Quem atacou"}</p><ul class="rd-list">${played.map(row).join("")}</ul>` : ""}
+      ${idle.length ? `<p class="rd-title">Sem ataques · ${idle.length}</p><div class="rd-chips">${idle.map((m) => `<span class="rd-chip">${esc(m.name)}</span>`).join("")}</div>` : ""}`;
   }
 
+  // Raid: cronômetro e botões que abrem os dados. Em andamento, `raid.last` (se vier) é o último raid encerrado.
   function raidCard(raid, ui) {
     if (!raid) return `<div class="acc-item"><div class="acc-btn acc-btn-static"><span class="acc-title">${ic("dungeon")} Raid</span><span class="acc-meta">indisponível</span></div></div>`;
     const on = raid.state === "ongoing";
     const target = on ? raid.end_time : raid.next_start_time;
-    return `<div class="acc-item${ui.raidOpen ? " is-open" : ""}" data-acc>
-      <button type="button" class="acc-btn" data-acc-btn aria-expanded="${ui.raidOpen}">
-        <span class="acc-title">${ic("dungeon")} Raid</span>
-        <span class="acc-meta">${ic("clock")} <span data-countdown="${esc(target)}">--</span>${ic("chevron-down", "acc-chevron")}</span></button>
-      <div class="acc-body-content${ui.raidOpen ? "" : " hidden"}" data-acc-body>
+    const blocks = [];
+    if (on) blocks.push({ key: "now", label: "Raid em andamento", html: raidDetails(raid) });
+    const last = on ? raid.last : raid;
+    if (last) blocks.push({ key: "last", label: "Último raid", html: raidDetails(last) });
+    const buttons = blocks.filter((b) => b.html).map((b) => {
+      const open = ui.raidOpen.has(b.key);
+      return `<button type="button" class="mirrors-toggle" data-raid-btn="${b.key}" aria-expanded="${open}"><span>${b.label}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
+        <div class="rd-body${open ? "" : " hidden"}" data-raid-body="${b.key}">${b.html}</div>`;
+    }).join("");
+    return `<div class="acc-item is-open" data-raid>
+      <div class="acc-btn acc-btn-static"><span class="acc-title">${ic("dungeon")} Raid</span><span class="acc-meta">${ic("clock")} ${on ? "Em andamento" : "Aguardando"}</span></div>
+      <div class="acc-body-content">
         <div class="highlight"><span class="hl-label">${on ? "Termina em" : "Início em"}</span>
           <span class="hl-value" data-countdown="${esc(target)}">--</span><span class="hl-note">${fdateTime(target)}</span></div>
-        ${raidProgress(raid, on)}</div></div>`;
+        ${buttons}</div></div>`;
   }
 
   function gamesCard(g) {

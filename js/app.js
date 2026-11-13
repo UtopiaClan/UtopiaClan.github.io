@@ -6,7 +6,7 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  const ui = { mirrorsOpen: false, openBases: new Set(), raidOpen: false, openMembers: new Set() };
+  const ui = { mirrorsOpen: false, openBases: new Set(), raidOpen: new Set(), openMembers: new Set() };
   const memberCache = {}; // tag -> { at, data } (ranqueada de cada membro, nada é guardado no servidor)
   const pending = {};     // tag -> promessa em andamento (evita pedir a mesma ranqueada duas vezes)
   const state = { members: [], ranks: null }; // ranks: Map tag -> liga (vem de outra rota, chega depois)
@@ -316,10 +316,9 @@
   document.addEventListener("click", (e) => {
     const t = e.target, hit = (s) => t.closest(s);
     let el;
-    if ((el = hit("[data-acc-btn]"))) {
-      const item = el.closest("[data-acc]");
-      ui.raidOpen = toggle(el, $("[data-acc-body]", item));
-      item.classList.toggle("is-open", ui.raidOpen);
+    if ((el = hit("[data-raid-btn]"))) {
+      const key = el.dataset.raidBtn;
+      toggle(el, $('[data-raid-body="' + key + '"]', el.closest("[data-raid]"))) ? ui.raidOpen.add(key) : ui.raidOpen.delete(key);
     } else if ((el = hit("[data-mirrors-btn]"))) {
       ui.mirrorsOpen = toggle(el, $("[data-mirrors-body]"));
       $("[data-mirrors-label]", el).textContent = ui.mirrorsOpen ? "Ocultar" : "Detalhes";
