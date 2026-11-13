@@ -330,13 +330,15 @@
   // Semana anterior: relatório da semana (ataques/defesas agregados) quando disponível;
   // senão, só o resumo `last` (liga, colocação, troféus) da rota do jogador.
   // Se a rota do jogador mandar as batalhas da semana (`previous_*`), a lista aparece também.
-  function previousWeek(d, prev) {
+  function previousWeek(d, prev, loading) {
     const found = prev && prev.found ? prev.found : null;
     // Na Lenda I o período é o dia: vale a liga da semana anterior (`found`) ou, sem ela, a do `last`.
     const day = found ? isLegendOne(found.p.previous_tier) : isLegendOne(d.last && d.last.tier);
     const range = day ? legendDay(-1) : prev ? weekLabel(-1, prev.season) : weekLabel(-1, d.previous_season_id);
     const head = `<header class="rk-head"><h4 class="rk-title">${day ? "Dia anterior" : "Semana anterior"}</h4><span class="rk-range">${range}</span></header>`;
     const none = `<section class="rk-week">${head}<p class="rk-empty">Sem participação na ranqueada ${day ? "neste dia" : "nesta semana"}.</p></section>`;
+    // O relatório da semana ainda está chegando: o resumo `last` pode ser de uma semana mais antiga, então espera.
+    if (!prev && loading) return `<section class="rk-week">${head}<p class="rk-loading">Carregando semana anterior…</p></section>`;
     const battles = prevBattles(d, prev);
     const noteOnly = `<p class="rk-note">A lista de batalhas só aparece ${day ? "no dia atual" : "na semana atual"}.</p>`;
     if (found) {
@@ -376,8 +378,8 @@
   }
 
   // `prev`: { found: { p, cat }|null, season } do relatório da semana anterior, ou null se não carregou.
-  function rankDetail(d, prev) {
-    return `${marks(d)}<div class="rk">${currentWeek(d)}${previousWeek(d, prev)}</div>`;
+  function rankDetail(d, prev, loadingPrev) {
+    return `${marks(d)}<div class="rk">${currentWeek(d)}${previousWeek(d, prev, loadingPrev)}</div>`;
   }
 
   /* ---------- Histórico ---------- */

@@ -196,11 +196,11 @@
 
   async function loadMemberDetail(row) {
     const tag = row.dataset.memberTag, cached = memberCache[tag];
-    const draw = () => { const box = detailBox(tag), c = memberCache[tag]; if (box && c) box.innerHTML = R.rankDetail(c.data, prevFor(tag)); };
+    const draw = () => { const box = detailBox(tag), c = memberCache[tag]; if (box && c) box.innerHTML = R.rankDetail(c.data, prevFor(tag), !prevWeek.map && !!prevWeek.promise); };
     const box0 = detailBox(tag);
     if (!box0) return;
     if (cached) draw(); else box0.innerHTML = '<p class="rk-loading">Carregando ranqueada…</p>';
-    fetchPrevWeek().then(draw, () => { /* sem o relatório, a semana anterior mostra só o resumo */ });
+    fetchPrevWeek().then(draw, draw); // sem o relatório, a semana anterior mostra só o resumo
     if (cached && Date.now() - cached.at < 60000) return;
     try {
       await fetchDetail(tag);
