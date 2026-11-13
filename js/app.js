@@ -6,7 +6,7 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  const ui = { mirrorsOpen: false, openBases: new Set(), raidCard: false, raidOpen: new Set(), openMembers: new Set() };
+  const ui = { mirrorsOpen: false, openBases: new Set(), raidCard: false, membersView: "geral", membersSort: "default", raidOpen: new Set(), openMembers: new Set() };
   const memberCache = {}; // tag -> { at, data } (ranqueada de cada membro, nada é guardado no servidor)
   const pending = {};     // tag -> promessa em andamento (evita pedir a mesma ranqueada duas vezes)
   const state = { members: [], ranks: null }; // ranks: Map tag -> liga (vem de outra rota, chega depois)
@@ -99,7 +99,7 @@
   }
 
   /* ---------- membros ---------- */
-  const search = $("#memberSearch"), roleFilter = $("#memberRoleFilter");
+  const search = $("#memberSearch"), roleFilter = $("#memberRoleFilter"), cvFilter = $("#memberCvFilter"), sortSel = $("#memberSort");
   // A linha de detalhes só aparece se o membro está visível no filtro E aberto.
   function syncDetail(row, visible) {
     const d = row.nextElementSibling;
@@ -107,10 +107,10 @@
   }
 
   function filterMembers() {
-    const t = norm(search.value.trim()), r = roleFilter.value;
+    const t = norm(search.value.trim()), r = roleFilter.value, cv = cvFilter.value;
     let n = 0;
     $$("[data-member-row]").forEach((row) => {
-      const ok = (!t || norm(row.dataset.memberName).includes(t)) && (!r || row.dataset.memberRole === r);
+      const ok = (!t || norm(row.dataset.memberName).includes(t)) && (!r || row.dataset.memberRole === r) && (!cv || row.dataset.memberCv === cv);
       row.classList.toggle("hidden", !ok);
       syncDetail(row, ok);
       if (ok) n++;
@@ -120,26 +120,87 @@
   }
   search.addEventListener("input", filterMembers);
   roleFilter.addEventListener("change", filterMembers);
+  cvFilter.addEventListener("change", filterMembers);
+
+  // Ordenação: cada visão tem as suas opções. Quem não tem o dado (ex.: sem guerra) vai para o fim.
+  const ratio = (s) => (s && s.total ? s.played / s.total : null);
+  const starsSum = (s) => (s && s.stars && s.stars.some(Boolean) ? s.avg : null);
+  const att = (view) => (m) => (view === "cwl" ? m.cwl : m.war);
+  const COMMON = [
+    ["default", "Rank (padrão)", null, -1, "liga e troféus"],
+    ["name", "Nome (A–Z)", (m) => m.name.toLocaleLowerCase("pt-BR"), 1, "nome"],
+    ["cv", "CV (maior)", (m) => m.town_hall, -1, "CV, do maior ao menor"],
+    ["cvAsc", "CV (menor)", (m) => m.town_hall, 1, "CV, do menor ao maior"],
+    ["since", "Desde (mais antigo)", (m) => (m.since ? Date.parse(m.since) : null), 1, "entrada, do mais antigo"],
+    ["sinceDesc", "Desde (mais recente)", (m) => (m.since ? Date.parse(m.since) : null), -1, "entrada, do mais recente"],
+  ];
+  function sortOptions(view) {
+    if (view === "geral") return [...COMMON,
+      ["best", "Best (maior liga)", (m) => (m.best && m.best.tier ? m.best.tier.rank : null), -1, "melhor liga"],
+      ["last", "Last (maior liga)", (m) => (m.last && m.last.tier ? m.last.tier.rank : null), -1, "liga da semana passada"]];
+    if (view === "raid") return [COMMON[0], COMMON[1],
+      ["part", "Participação (maior)", (m) => ratio(m.raids), -1, "participação em raids"],
+      ["partAsc", "Participação (menor)", (m) => ratio(m.raids), 1, "participação em raids, da menor"],
+      ["loot", "Melhor saque (maior)", (m) => m.raids.best_loot || null, -1, "melhor saque de raid"]];
+    const s = att(view);
+    return [COMMON[0], COMMON[1],
+      ["part", "Participação (maior)", (m) => ratio(s(m)), -1, "participação"],
+      ["partAsc", "Participação (menor)", (m) => ratio(s(m)), 1, "participação, da menor"],
+      ["avg", "Média (maior)", (m) => starsSum(s(m)), -1, "média de estrelas, da maior"],
+      ["avgAsc", "Média (menor)", (m) => starsSum(s(m)), 1, "média de estrelas, da menor"],
+      ["three", "⭐⭐⭐ (mais)", (m) => (s(m).stars ? s(m).stars[0] : null), -1, "mais 3 estrelas"],
+      ["missed", "Faltas (maior)", (m) => s(m).missed, -1, "faltas, da maior"],
+      ["missedAsc", "Faltas (menor)", (m) => s(m).missed, 1, "faltas, da menor"],
+      ["bonus", "Bônus (maior)", (m) => s(m).bonus, -1, "bônus, do maior"]];
+  }
+  function buildSortSelect() {
+    const opts = sortOptions(ui.membersView);
+    if (!opts.some((o) => o[0] === ui.membersSort)) ui.membersSort = "default";
+    sortSel.innerHTML = opts.map((o) => `<option value="${o[0]}">${o[1]}</option>`).join("");
+    sortSel.value = ui.membersSort;
+    $("#membersSortText").textContent = opts.find((o) => o[0] === ui.membersSort)[4];
+  }
+  sortSel.addEventListener("change", () => { ui.membersSort = sortSel.value; buildSortSelect(); renderMembers(); });
+  function buildCvFilter() {
+    const keep = cvFilter.value, cvs = [...new Set(state.members.map((m) => m.town_hall).filter(Boolean))].sort((a, b) => b - a);
+    cvFilter.innerHTML = '<option value="">Todos os CV</option>' + cvs.map((v) => `<option value="${v}">CV ${v}</option>`).join("");
+    cvFilter.value = cvs.map(String).includes(keep) ? keep : "";
+  }
 
   // Liga de um jogador na rota /ranqueada/atual. `trophies` só vem se a API informar.
   function rankOf(p) {
     const t = p && p.current_tier;
     if (!t) return null;
     const tro = p.trophies != null ? p.trophies : p.league_trophies;
-    return { tier: t.rank, label: t.label, short: t.short, icon: t.emoji_name, trophies: tro == null ? null : tro };
+    return { tier: t.rank, label: t.label, short: t.short, icon: t.emoji_name, trophies: tro == null ? null : tro, best: p.best || null, last: p.last || null };
   }
 
   // Padrão: liga mais alta primeiro e, na mesma liga, mais troféus. Sem a liga, mantém a ordem da API.
   function orderedMembers() {
     const ranks = state.ranks;
-    const list = state.members.map((m) => ({ ...m, rank: ranks ? ranks.get(m.tag) || null : null }));
-    if (!ranks) return list;
+    // Best/Last vêm da lista da ranqueada; sem isso, entram (aos poucos) quando o membro é expandido.
+    const list = state.members.map((m) => {
+      const r = ranks ? ranks.get(m.tag) || null : null, c = memberCache[m.tag] && memberCache[m.tag].data;
+      return { ...m, rank: r, best: (r && r.best) || (c && c.best) || null, last: (r && r.last) || (c && c.last) || null };
+    });
     const tier = (m) => (m.rank ? m.rank.tier : -1), tro = (m) => (m.rank && m.rank.trophies != null ? m.rank.trophies : -1);
-    return list.sort((a, b) => tier(b) - tier(a) || tro(b) - tro(a)); // sort é estável
+    if (ranks) list.sort((a, b) => tier(b) - tier(a) || tro(b) - tro(a)); // padrão: liga e troféus (sort é estável)
+    const opt = sortOptions(ui.membersView).find((o) => o[0] === ui.membersSort);
+    if (!opt || !opt[2]) return list;
+    const [, , val, dir] = opt;
+    return list.sort((a, b) => {
+      const x = val(a), y = val(b);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * dir;
+    });
   }
 
   function renderMembers() {
-    $("#membersBody").innerHTML = orderedMembers().map(R.memberRow).join("");
+    buildCvFilter(); buildSortSelect();
+    $("#membersHead").innerHTML = R.membersHead(ui.membersView);
+    $("#membersBody").innerHTML = orderedMembers().map((m) => R.memberRow(m, ui.membersView)).join("");
     $("#membersTotal").textContent = state.members.length;
     $$("[data-member-row]").forEach((row) => { // reabre quem estava aberto antes da atualização
       if (!ui.openMembers.has(row.dataset.memberTag)) return;
@@ -329,6 +390,11 @@
     } else if ((el = hit("[data-mirror-btn]"))) {
       const item = el.closest("[data-mirror-item]"), open = toggle(el, $("[data-mirror-detail]", item));
       if (item.closest("[data-mirrors-body]")) open ? ui.openBases.add(+item.dataset.pos) : ui.openBases.delete(+item.dataset.pos);
+    } else if ((el = hit("[data-mview]"))) {
+      ui.membersView = el.dataset.mview;
+      $("#membersTable").dataset.view = ui.membersView;
+      $$("[data-mview]").forEach((b) => { const on = b === el; b.classList.toggle("is-active", on); b.setAttribute("aria-pressed", on); });
+      renderMembers();
     } else if ((el = hit("[data-member-toggle]"))) {
       const row = el.closest("[data-member-row]"), tag = row.dataset.memberTag, open = el.getAttribute("aria-expanded") !== "true";
       el.setAttribute("aria-expanded", open);

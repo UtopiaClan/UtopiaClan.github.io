@@ -189,17 +189,47 @@
     return `<span class="raid-best" title="Melhor saque de um fim de semana de raid"><span class="lg-emoji">💰</span>${nf(raids.best_loot)}</span>`;
   }
 
-  function memberRow(m) {
-    const role = ROLES[m.role] || ROLES.member;
-    return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}">
-      <td><div class="member-cell"><span class="member-avatar" data-role-tip data-role="${role.label}" tabindex="0" role="button" aria-label="Cargo: ${role.label}">${ic(role.icon)}<span class="role-tip" role="tooltip">${role.label}</span></span><span class="member-name">${esc(m.name)}</span></div></td>
-      <td class="cell-center">${rankCell(m.rank)}</td>
-      <td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
+  // Visões da tabela de membros (botões acima dela): cada uma mostra só as suas colunas.
+  // [emoji, título]: no celular só o emoji aparece no cabeçalho; sem emoji o título fica sempre.
+  const MEMBER_VIEWS = {
+    geral: [["", "CV"], ["", "Desde"], ["", "Rank"], ["🔥", "Best"], ["📅", "Last"]],
+    cwl: [["🏆", "Participação"], ["⭐", "3/2/1/0"], ["🌟", "Média"], ["❌", "Faltas"], ["🪎", "Bônus"]],
+    war: [["⚔️", "Participação"], ["⭐", "3/2/1/0"], ["🌟", "Média"], ["❌", "Faltas"], ["🪎", "Bônus"]],
+    raid: [["🛡️", "Participação"], ["💰", "Melhor saque"]],
+  };
+  function membersHead(view) {
+    const cols = (MEMBER_VIEWS[view] || MEMBER_VIEWS.geral)
+      .map(([e, t]) => `<th scope="col" class="cell-center" title="${t === "CV" ? "Centro de Vila" : t}">${e ? `${e}<span class="th-t"> ${t}</span>` : t}</th>`).join("");
+    return `<tr><th scope="col">Membro</th>${cols}<th scope="col" class="cell-toggle"><span class="sr-only">Detalhes</span></th></tr>`;
+  }
+  // Best/Last na tabela: liga + posição (ou troféus na Lenda I), no mesmo formato do card ao expandir.
+  const standingTitle = (s) => {
+    if (!s || !s.tier || !isLegendOne(s.tier)) return "";
+    const p = [s.global_rank ? "🌍 " + rankNo(s.global_rank) : "", s.local_rank ? "📍 " + rankNo(s.local_rank) : ""].filter(Boolean);
+    return p.length ? ` title="${p.join("  ")}"` : "";
+  };
+  const standingCell = (s) => `<td class="cell-center">${s && s.tier ? `<div class="rk-mark-val st-cell"${standingTitle(s)}>${standingValue(s, true)}</div>` : `<span class="join-date">—</span>`}</td>`;
+  function memberCells(m, view) {
+    if (view === "geral") {
+      return `<td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
-      <td class="cell-center"><div class="lg-cell">${lgRow([["🏆", pair(m.cwl)], ["⭐", starRow(m.cwl.stars)], ["🌟", m.cwl.avg.toFixed(1)], ["❌", p2(m.cwl.missed)], ["🪎", p2(m.cwl.bonus)]])}${lgRow([["⚔️", pair(m.war)], ["⭐", starRow(m.war.stars)], ["🌟", m.war.avg.toFixed(1)], ["❌", p2(m.war.missed)], ["🪎", p2(m.war.bonus)]])}</div></td>
-      <td class="cell-center"><div class="raids-cell"><span class="raid-chip"><span class="lg-emoji">🛡️</span>${p2(m.raids.played)}/${p2(m.raids.total)}</span>${raidBest(m.raids)}</div></td>
+      <td class="cell-center">${rankCell(m.rank)}</td>${standingCell(m.best)}${standingCell(m.last)}`;
+    }
+    if (view === "raid") {
+      return `<td class="cell-center"><span class="raid-chip">${p2(m.raids.played)}/${p2(m.raids.total)}</span></td>
+      <td class="cell-center">${m.raids.best_loot ? `<span class="raid-best">${nf(m.raids.best_loot)}</span>` : `<span class="join-date">—</span>`}</td>`;
+    }
+    const s = view === "cwl" ? m.cwl : m.war;
+    return `<td class="cell-center">${pair(s)}</td><td class="cell-center">${starRow(s.stars)}</td><td class="cell-center">${s.avg.toFixed(1)}</td><td class="cell-center">${p2(s.missed)}</td><td class="cell-center">${p2(s.bonus)}</td>`;
+  }
+
+  function memberRow(m, view = "geral") {
+    const role = ROLES[m.role] || ROLES.member;
+    return `<tr data-member-row data-member-tag="${esc(m.tag)}" data-member-name="${esc(m.name)}" data-member-role="${role.label}" data-member-cv="${m.town_hall || ""}">
+      <td><div class="member-cell"><span class="member-avatar" data-role-tip data-role="${role.label}" tabindex="0" role="button" aria-label="Cargo: ${role.label}">${ic(role.icon)}<span class="role-tip" role="tooltip">${role.label}</span></span><span class="member-name">${esc(m.name)}</span></div></td>
+      ${memberCells(m, view)}
       <td class="cell-toggle"><button type="button" class="hist-expand" data-member-toggle aria-expanded="false" aria-label="Ver ranqueada de ${esc(m.name)}">${ic("chevron-down")}</button></td></tr>
-    <tr class="member-detail hidden" data-member-detail-row><td colspan="7"><div class="rk-wrap" data-member-detail></div></td></tr>`;
+    <tr class="member-detail hidden" data-member-detail-row><td colspan="99"><div class="rk-wrap" data-member-detail></div></td></tr>`;
   }
 
   /* ---------- Ranqueada do membro (semana atual e anterior) ---------- */
@@ -261,12 +291,13 @@
 
   // 🔥 Best e 📅 Last, no mesmo formato do /rank do Discord: liga + posição; na Lenda I, troféus + 🌍 global + 📍 local.
   const rankNo = (n) => `#${String(n).padStart(2, "0")}`;
-  function standingValue(s) {
+  function standingValue(s, compact) {
     const tier = s && s.tier ? tierOf(s.tier) : null;
     if (!tier) return `<span class="rk-mark-none">—</span>`;
     if (isLegendOne(tier)) {
       const parts = [];
       if (s.trophies != null) parts.push(`<span class="rk-mark-part">🏆 ${nf(s.trophies)}</span>`);
+      if (compact) return `${rankIcon(tier)}<span class="rk-mark-tier">${esc(tier.short)}</span>${parts.join("")}`; // na tabela só os troféus: linhas de mesma altura
       if (s.global_rank) parts.push(`<span class="rk-mark-part" title="Posição global">🌍 ${rankNo(s.global_rank)}</span>`);
       if (s.local_rank) parts.push(`<span class="rk-mark-part" title="Posição local">📍 ${rankNo(s.local_rank)}</span>`);
       return `${rankIcon(tier)}<span class="rk-mark-tier">${esc(tier.short)}</span>${parts.join("")}`;
@@ -450,5 +481,5 @@
     };
   }
 
-  window.TahRender = { esc, dashboard, memberRow, rankDetail, history, mirrorList, ROLES };
+  window.TahRender = { esc, dashboard, memberRow, membersHead, rankDetail, history, mirrorList, ROLES };
 })();
