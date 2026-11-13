@@ -192,7 +192,7 @@
   // Visões da tabela de membros (botões acima dela): cada uma mostra só as suas colunas.
   // [emoji, título]: no celular só o emoji aparece no cabeçalho; sem emoji o título fica sempre.
   const MEMBER_VIEWS = {
-    geral: [["", "CV"], ["", "Desde"], ["", "Rank"], ["🔥", "Best"], ["📅", "Last"]],
+    geral: [["", "CV"], ["", "Desde"], ["", "Rank"], ["🔥", "Best"]],
     cwl: [["🏆", "Participação"], ["⭐", "3/2/1/0"], ["🌟", "Média"], ["❌", "Faltas"], ["🪎", "Bônus"]],
     war: [["⚔️", "Participação"], ["⭐", "3/2/1/0"], ["🌟", "Média"], ["❌", "Faltas"], ["🪎", "Bônus"]],
     raid: [["🛡️", "Participação"], ["💰", "Melhor saque"]],
@@ -214,7 +214,7 @@
     if (view === "geral") {
       return `<td class="cell-center"><span class="target-chip">${m.town_hall ? "CV " + m.town_hall : "—"}</span></td>
       <td class="cell-center"><span class="join-date">${fdate(m.since)}</span></td>
-      <td class="cell-center">${rankCell(m.rank)}</td>${standingCell(m.best, "best")}${standingCell(m.last, "last")}`;
+      <td class="cell-center">${rankCell(m.rank)}</td>${standingCell(m.best, "best")}`;
     }
     if (view === "raid") {
       return `<td class="cell-center"><span class="raid-chip">${p2(m.raids.played)}/${p2(m.raids.total)}</span></td>

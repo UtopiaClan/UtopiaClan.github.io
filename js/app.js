@@ -8,6 +8,28 @@
 
   const ui = { mirrorsOpen: false, openBases: new Set(), raidCard: false, membersView: "geral", membersSort: "default", raidOpen: new Set(), openMembers: new Set() };
   const memberCache = {}; // tag -> { at, data } (ranqueada de cada membro, nada é guardado no servidor)
+
+  // Best de cada membro guardado no navegador (localStorage): aparece na hora ao abrir e só é buscado de novo quando
+  // passa de BEST_TTL. Se o navegador bloquear o armazenamento, tudo continua funcionando, só sem esse atalho.
+  const BEST_KEY = "utopia.best.v1", BEST_TTL = 6 * 3600 * 1000;
+  const bestStore = (() => {
+    try { const o = JSON.parse(localStorage.getItem(BEST_KEY) || "{}"); return o && typeof o === "object" ? o : {}; }
+    catch (e) { return {}; }
+  })();
+  let bestSaveTimer = 0;
+  function rememberBest(tag, best) {
+    bestStore[tag] = { at: Date.now(), best: best || null };
+    clearTimeout(bestSaveTimer);
+    bestSaveTimer = setTimeout(() => {
+      try {
+        const keep = new Set((state.members || []).map((m) => m.tag)), out = {};
+        Object.keys(bestStore).forEach((t) => { if (!keep.size || keep.has(t)) out[t] = bestStore[t]; });
+        localStorage.setItem(BEST_KEY, JSON.stringify(out));
+      } catch (e) { /* sem armazenamento: segue sem cache */ }
+    }, 800);
+  }
+  const storedBest = (tag) => (bestStore[tag] && bestStore[tag].best) || null;
+  const bestIsFresh = (tag) => !!bestStore[tag] && Date.now() - bestStore[tag].at < BEST_TTL;
   const pending = {};     // tag -> promessa em andamento (evita pedir a mesma ranqueada duas vezes)
   const state = { members: [], ranks: null }; // ranks: Map tag -> liga (vem de outra rota, chega depois)
   const loaded = { members: 0, ranks: 0, history: 0 };
@@ -136,8 +158,7 @@
   ];
   function sortOptions(view) {
     if (view === "geral") return [...COMMON,
-      ["best", "Best (maior liga)", (m) => (m.best && m.best.tier ? m.best.tier.rank : null), -1, "melhor liga"],
-      ["last", "Last (maior liga)", (m) => (m.last && m.last.tier ? m.last.tier.rank : null), -1, "liga da semana passada"]];
+      ["best", "Best (maior liga)", (m) => (m.best && m.best.tier ? m.best.tier.rank : null), -1, "melhor liga"]];
     if (view === "raid") return [COMMON[0], COMMON[1],
       ["part", "Participação (maior)", (m) => ratio(m.raids), -1, "participação em raids"],
       ["partAsc", "Participação (menor)", (m) => ratio(m.raids), 1, "participação em raids, da menor"],
@@ -181,7 +202,7 @@
     // Best/Last vêm da lista da ranqueada; sem isso, entram (aos poucos) quando o membro é expandido.
     const list = state.members.map((m) => {
       const r = ranks ? ranks.get(m.tag) || null : null, c = memberCache[m.tag] && memberCache[m.tag].data;
-      return { ...m, rank: r, best: (r && r.best) || (c && c.best) || null, last: (r && r.last) || (c && c.last) || null };
+      return { ...m, rank: r, best: (r && r.best) || (c && c.best) || storedBest(m.tag) };
     });
     const tier = (m) => (m.rank ? m.rank.tier : -1), tro = (m) => (m.rank && m.rank.trophies != null ? m.rank.trophies : -1);
     if (ranks) list.sort((a, b) => tier(b) - tier(a) || tro(b) - tro(a)); // padrão: liga e troféus (sort é estável)
@@ -228,15 +249,13 @@
   // jogador, aos poucos (3 por vez) e em segundo plano. Cada linha é atualizada no lugar quando o dado chega.
   const STANDINGS_PARALLEL = 3;
   let standingsRun = false;
-  const hasStanding = (tag) => { const r = state.ranks && state.ranks.get(tag); return !!(memberCache[tag] || (r && (r.best || r.last))); };
+  const hasStanding = (tag) => { const r = state.ranks && state.ranks.get(tag); return !!(memberCache[tag] || (r && r.best) || bestIsFresh(tag)); };
   function fillStanding(tag) {
     if (ui.membersView !== "geral") return;
     const row = $('[data-member-row][data-member-tag="' + tag + '"]'), c = memberCache[tag] && memberCache[tag].data;
     if (!row || !c) return;
-    ["best", "last"].forEach((k) => {
-      const td = $('[data-st="' + k + '"]', row);
-      if (td) td.outerHTML = R.standingCell(c[k], k);
-    });
+    const td = $('[data-st="best"]', row);
+    if (td) td.outerHTML = R.standingCell(c.best, "best");
   }
   function loadStandings() {
     if (standingsRun) return;
@@ -246,7 +265,7 @@
     let active = 0;
     const next = () => {
       if (!queue.length) {
-        if (!active) { standingsRun = false; if (["best", "last"].includes(ui.membersSort)) renderMembers(); }
+        if (!active) { standingsRun = false; if (ui.membersSort === "best") renderMembers(); }
         return;
       }
       const tag = queue.shift();
@@ -270,7 +289,7 @@
 
   const detailBox = (tag) => { const row = $('[data-member-row][data-member-tag="' + tag + '"]'); return row && $("[data-member-detail]", row.nextElementSibling); };
   const fetchDetail = (tag) => (pending[tag] = pending[tag] || API.memberRanked(tag)
-    .then((data) => { memberCache[tag] = { at: Date.now(), data }; return data; })
+    .then((data) => { memberCache[tag] = { at: Date.now(), data }; rememberBest(tag, data && data.best); return data; })
     .finally(() => { delete pending[tag]; }));
 
   // Relatório da semana anterior (todos os membros de uma vez): carrega uma vez e vale por 10 min.
