@@ -41,7 +41,19 @@
       <span class="esp-attack-stars">${stars(a.stars)}</span><span class="esp-attack-result">- ${Math.round(a.destruction)}%</span></li>`).join("");
   }
 
-  function mirrorItem(item, open, showLeft) {
+  // Estrelas tomadas na base de `target` (como no mapa do jogo): o melhor ataque que o adversário fez contra ela.
+  // Calculado a partir dos ataques de cada lado, então vale para a guerra ao vivo e para espelhos antigos do histórico.
+  function takenStars(attackers, target, position) {
+    if (!target) return 0;
+    let best = 0;
+    attackers.forEach((side) => (side?.attacks || []).forEach((a) => {
+      const hit = a.target_tag ? a.target_tag === target.tag : a.target_position === position;
+      if (hit && (a.stars || 0) > best) best = a.stars;
+    }));
+    return best;
+  }
+
+  function mirrorItem(item, open, showLeft, taken) {
     const o = item.ours || {}, e = item.enemy || {};
     const left = (s) => (showLeft && s.attacks_left > 0 ? `<span class="esp-left">${s.attacks_left} Atk</span>` : "");
     const cv = (s) => (s.town_hall ? "CV" + s.town_hall : "CV—");
@@ -52,9 +64,9 @@
           <div class="esp-side esp-side-enemy"><span class="esp-name">${esc(e.name ?? "—")}</span><span class="esp-rank">#${item.position}</span></div>
         </div>
         <div class="esp-line esp-line-sub">
-          <div class="esp-side">${starsWrap(o.stars || 0, "esp-stars")}${left(o)}</div>
+          <div class="esp-side" title="Estrelas tomadas nesta base">${starsWrap(taken.ours, "esp-stars")}${left(o)}</div>
           <span class="esp-th" title="Centro de vila: nosso x inimigo"><b>${cv(o)}</b><i>vs</i><b class="is-enemy">${cv(e)}</b></span>
-          <div class="esp-side esp-side-enemy">${left(e)}${starsWrap(e.stars || 0, "esp-stars esp-stars-enemy")}</div>
+          <div class="esp-side esp-side-enemy" title="Estrelas tomadas nesta base">${left(e)}${starsWrap(taken.enemy, "esp-stars esp-stars-enemy")}</div>
         </div>
       </div>
       <button type="button" class="esp-toggle" data-mirror-btn aria-expanded="${open}" aria-label="Ver ataques da posição ${item.position}">${ic("chevron-down")}</button></div>
@@ -65,7 +77,12 @@
   }
 
   function mirrorList(items, openBases, showLeft) {
-    return `<ul class="esp-list">${items.map((i) => mirrorItem(i, openBases.has(i.position), showLeft)).join("")}</ul>`;
+    const ours = items.map((i) => i.ours), enemy = items.map((i) => i.enemy);
+    return `<ul class="esp-list">${items.map((i) => {
+      // Na base nossa, vale o que o inimigo tomou (ataques dele); na base dele, o que nós tomamos.
+      const taken = { ours: takenStars(enemy, i.ours, i.position), enemy: takenStars(ours, i.enemy, i.position) };
+      return mirrorItem(i, openBases.has(i.position), showLeft, taken);
+    }).join("")}</ul>`;
   }
 
   const WAR_RESULT = { won: ["Vitória", "is-won"], lost: ["Derrota", "is-lost"], tie: ["Empate", "is-tie"] };
