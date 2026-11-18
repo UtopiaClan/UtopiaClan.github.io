@@ -6,7 +6,11 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  const ui = { mirrorsOpen: false, openBases: new Set(), raidCard: false, membersView: "geral", membersSort: "default", raidOpen: new Set(), openMembers: new Set() };
+  const ui = {
+    mirrorsOpen: false, openBases: new Set(), eventsOpen: false, eventsPage: 0, // eventsPage 0 = acompanha a última página
+    raidCard: false, membersView: "geral", membersSort: "default", raidOpen: new Set(), openMembers: new Set(),
+    period: { mode: "days", days: 60 }, // filtro de data dos membros: padrão = últimos 60 dias
+  };
   const memberCache = {}; // tag -> { at, data } (ranqueada de cada membro, nada é guardado no servidor)
 
   // Best de cada membro guardado no navegador (localStorage): aparece na hora ao abrir e só é buscado de novo quando
@@ -32,9 +36,10 @@
   const bestIsFresh = (tag) => !!bestStore[tag] && Date.now() - bestStore[tag].at < BEST_TTL;
   const pending = {};     // tag -> promessa em andamento (evita pedir a mesma ranqueada duas vezes)
   const state = { members: [], ranks: null }; // ranks: Map tag -> liga (vem de outra rota, chega depois)
-  const loaded = { members: 0, ranks: 0, history: 0 };
+  const loaded = { members: 0, membersKey: "", ranks: 0, history: 0 };
   let clanName = cfg.CLAN_NAME || "";
   let lastDash = 0;
+  let dashData = null; // último /api/dashboard (a lista de eventos troca de página sem buscar de novo)
 
   /* ---------- status ---------- */
   const status = $("#apiStatus");
@@ -109,6 +114,7 @@
     lastDash = Date.now();
     try {
       const d = await API.dashboard();
+      dashData = d;
       applyClan(d.clan);
       $("#dashboardRoot").innerHTML = R.dashboard(d, ui);
       setStatus(d.errors && d.errors.length ? "Alguns dados do jogo estão temporariamente indisponíveis (" + d.errors.join(", ") + ")." : "");
@@ -219,6 +225,7 @@
   }
 
   function renderMembers() {
+    periodBar.classList.toggle("hidden", ui.membersView === "geral"); // o Geral não depende de período
     buildCvFilter(); buildSortSelect();
     $("#membersHead").innerHTML = R.membersHead(ui.membersView);
     $("#membersBody").innerHTML = orderedMembers().map((m) => R.memberRow(m, ui.membersView)).join("");
@@ -275,17 +282,79 @@
     for (let i = 0; i < STANDINGS_PARALLEL; i++) next();
   }
 
-  async function loadMembers() {
-    if (Date.now() - loaded.members < 60000) return;
-    try {
-      const d = await API.members();
-      loaded.members = Date.now();
+  /* ---------- filtro de período (Ligas / Guerras / Raids) ---------- */
+
+  const periodBar = $("#memberPeriodBar"), periodInfo = $("#memberPeriodInfo"), customBox = $("#memberPeriodCustom");
+  const fromInput = $("#memberFrom"), toInput = $("#memberTo"), membersTable = $("#membersTable");
+  const periodParams = (p) => (p.mode === "days" ? { days: p.days } : p.mode === "range" ? { ...(p.from ? { from: p.from } : {}), ...(p.to ? { to: p.to } : {}) } : {});
+  const periodKey = (p) => JSON.stringify(periodParams(p));
+  const periodCache = {}; // chave do período -> { at, d }: trocar de botão e voltar não pede de novo
+  let membersReq = 0, membersPendingKey = null;
+  const todaySp = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0, 4) >= 2015;
+
+  function syncPeriodUi() {
+    const p = ui.period, which = p.mode === "days" ? String(p.days) : p.mode === "range" ? "custom" : "all";
+    $$("[data-mperiod]", periodBar).forEach((b) => { const on = b.dataset.mperiod === which; b.classList.toggle("is-active", on); b.setAttribute("aria-pressed", on); });
+    customBox.classList.toggle("hidden", p.mode !== "range");
+  }
+  function showPeriodInfo(text, error) {
+    periodInfo.textContent = text || "";
+    periodInfo.classList.toggle("is-error", !!error);
+  }
+
+  async function loadMembers(force) {
+    const period = ui.period, key = periodKey(period), hit = periodCache[key];
+    if (!force && membersPendingKey === key) return; // esse mesmo período já está sendo buscado
+    const apply = (d) => {
       state.members = d.members;
       renderMembers();
+      showPeriodInfo(R.periodInfo(d.period));
       setStatus("");
+    };
+    const fresh = (at) => Date.now() - at < 60000;
+    if (!force && ((key === loaded.membersKey && fresh(loaded.members)) || (hit && fresh(hit.at)))) {
+      membersReq++; membersPendingKey = null; // o que estava a caminho (outro período) já não vale
+      membersTable.classList.remove("is-loading");
+      if (key !== loaded.membersKey) { loaded.members = hit.at; loaded.membersKey = key; apply(hit.d); } // já buscado há pouco: na hora
+      else if (hit) showPeriodInfo(R.periodInfo(hit.d.period)); // mesma lista na tela: só devolve o texto do período
+      return;
+    }
+    const mine = ++membersReq;
+    membersPendingKey = key;
+    membersTable.classList.add("is-loading");
+    try {
+      const d = await API.members(periodParams(period));
+      if (mine !== membersReq) return; // chegou um pedido mais novo: este já não vale
+      periodCache[key] = { at: Date.now(), d };
+      loaded.members = Date.now(); loaded.membersKey = key;
+      apply(d);
       loadRanks(); // não espera: a lista aparece já e a liga entra quando chegar
-    } catch (e) { fail(e); }
+    } catch (e) { if (mine === membersReq) fail(e); }
+    finally { if (mine === membersReq) { membersPendingKey = null; membersTable.classList.remove("is-loading"); } }
   }
+
+  function setPeriod(next) {
+    ui.period = next;
+    syncPeriodUi();
+    loadMembers();
+  }
+
+  // Datas escritas à mão: só pede ao servidor quando as duas (ou uma) estão completas e coerentes.
+  let customTimer = 0;
+  function applyCustom(now) {
+    clearTimeout(customTimer);
+    customTimer = setTimeout(() => {
+      const from = fromInput.value, to = toInput.value;
+      fromInput.classList.toggle("is-invalid", !!from && !isDay(from));
+      toInput.classList.toggle("is-invalid", !!to && !isDay(to));
+      if ((from && !isDay(from)) || (to && !isDay(to))) return showPeriodInfo("Data inválida.", true);
+      if (!from && !to) return showPeriodInfo("Escolha a data inicial (e, se quiser, a final).");
+      if (from && to && from > to) return showPeriodInfo("A data inicial é depois da final.", true);
+      setPeriod({ mode: "range", from, to });
+    }, now === true ? 0 : 700);
+  }
+  [fromInput, toInput].forEach((el) => { el.max = todaySp(); el.addEventListener("input", applyCustom); el.addEventListener("change", applyCustom); });
 
   const detailBox = (tag) => { const row = $('[data-member-row][data-member-tag="' + tag + '"]'); return row && $("[data-member-detail]", row.nextElementSibling); };
   const fetchDetail = (tag) => (pending[tag] = pending[tag] || API.memberRanked(tag)
@@ -440,6 +509,27 @@
     } else if ((el = hit("[data-mirrors-btn]"))) {
       ui.mirrorsOpen = toggle(el, $("[data-mirrors-body]"));
       $("[data-mirrors-label]", el).textContent = ui.mirrorsOpen ? "Ocultar" : "Detalhes";
+    } else if ((el = hit("[data-events-btn]"))) {
+      ui.eventsOpen = toggle(el, $("[data-events-body]"));
+      $("[data-events-label]", el).textContent = ui.eventsOpen ? "Ocultar" : "Eventos";
+    } else if ((el = hit("[data-ev-page]"))) {
+      const events = (dashData && dashData.war && dashData.war.events) || [], want = +el.dataset.evPage;
+      ui.eventsPage = want >= Math.ceil(events.length / 10) ? 0 : want; // a última página volta a acompanhar os novos ataques
+      const box = $("[data-events-inner]");
+      if (box) box.innerHTML = R.eventsInner(events, ui.eventsPage);
+    } else if ((el = hit("[data-mperiod]"))) {
+      const v = el.dataset.mperiod;
+      if (v === "custom") {
+        const last = periodCache[periodKey(ui.period)], info = last && last.d.period; // começa do período que já estava na tela
+        if (!fromInput.value && info && info.from) fromInput.value = info.from;
+        if (!toInput.value && info && info.to) toInput.value = info.to;
+        ui.period = { mode: "range", from: fromInput.value, to: toInput.value };
+        syncPeriodUi();
+        if (fromInput.value || toInput.value) applyCustom(true); else showPeriodInfo("Escolha a data inicial (e, se quiser, a final).");
+      } else {
+        clearTimeout(customTimer);
+        setPeriod(v === "all" ? { mode: "all" } : { mode: "days", days: +v });
+      }
     } else if ((el = hit("[data-mirror-btn]"))) {
       const item = el.closest("[data-mirror-item]"), open = toggle(el, $("[data-mirror-detail]", item));
       if (item.closest("[data-mirrors-body]")) open ? ui.openBases.add(+item.dataset.pos) : ui.openBases.delete(+item.dataset.pos);

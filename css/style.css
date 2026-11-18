@@ -175,3 +175,33 @@ table{border-collapse:collapse}th{font-weight:inherit}
 .st-cell{flex-wrap:nowrap;white-space:nowrap;justify-content:center;gap:.2rem .4rem}.st-cell .rk-mark-tier{font-size:.95rem}
 @media(max-width:899px){.rk-lists{grid-template-columns:1fr}}
 .data-table tbody tr[data-member-row]>td{height:3.7rem;padding-block:.4rem}
+/* filtro de período dos membros */
+.mp-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem .9rem;margin-top:.8rem}
+.mp-chips{flex-wrap:wrap;align-items:center;overflow:visible}
+.mp-label{flex:none;font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);padding-right:.1rem}
+.mp-sep{flex:none;width:1px;height:1.2rem;background:var(--glass-border)}
+.mp-custom{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem}
+.mp-field{display:flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:600;color:var(--text-muted)}
+.mp-field input{height:2.2rem;padding:0 .75rem;border-radius:999px;border:1px solid var(--glass-border);background:var(--field-bg);font-size:.8rem;color:var(--text-color);outline:0}
+.mp-field input:focus{border-color:var(--accent-color)}.mp-field input.is-invalid{border-color:var(--loss)}
+.mp-info{flex-basis:100%;font-size:.72rem;color:var(--text-muted)}.mp-info.is-error{color:var(--loss);font-weight:600}
+.data-table.is-loading{opacity:.45;transition:opacity .15s}
+@media(max-width:699px){.mp-chips{width:100%}.mp-custom{width:100%}.mp-field{flex:1}.mp-field input{flex:1;min-width:0}}
+/* eventos da guerra (ataques na ordem em que aconteceram) */
+.ev-count{margin-top:.8rem;text-align:center;font-size:.72rem;font-weight:600;color:var(--text-muted)}
+.ev-list{display:flex;flex-direction:column;margin-top:.4rem}
+.ev-item{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;align-items:center;gap:.6rem;padding:.6rem 0 .6rem .6rem;border-top:1px solid var(--border-color);border-left:3px solid var(--accent-color)}
+.ev-item.is-enemy{border-left-color:var(--enemy)}
+.ev-n{font-size:.68rem;font-weight:700;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.ev-main{min-width:0;display:flex;flex-direction:column;gap:.15rem}
+.ev-who{display:flex;align-items:center;gap:.35rem;min-width:0;font-size:.82rem;font-weight:600}
+.ev-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ev-name.is-target{font-weight:500;color:var(--text-muted)}
+.ev-vs{flex:none;font-size:.75rem}
+.ev-sub{display:flex;align-items:center;gap:.35rem;font-size:.68rem;color:var(--text-muted);white-space:nowrap}
+.ev-res{display:flex;flex-direction:column;align-items:flex-end;gap:.1rem}.ev-pct{font-size:.72rem;font-weight:600;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.ev-empty{padding:1.2rem 1rem;text-align:center;font-size:.8rem;color:var(--text-muted)}
+.ev-pager .hist-gap{display:inline-grid;place-items:end center;min-width:1rem;height:2rem;font-size:.78rem;color:var(--text-muted)}
+/* rodapé: botão do WhatsApp */
+.wa-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem 1rem;border-radius:999px;border:1px solid var(--glass-border);background:var(--field-bg);font-size:.8rem;font-weight:600;color:var(--text-color);transition:.2s}
+.wa-btn:hover,.wa-btn:focus-visible{border-color:#1FAF55;background:rgba(31,175,85,.09);color:#17814a;outline:0}
+.wa-ico{display:grid;place-items:center;font-size:1.25rem;color:#1FAF55;line-height:0}

@@ -32,7 +32,8 @@
   window.TahApi = {
     health: () => get("/api/health"),
     dashboard: () => get("/api/dashboard"),
-    members: () => get("/api/members"),
+    // `params`: { days: 60 } ou { from: "2026-10-01", to: "2026-10-31" } (AAAA-MM-DD); vazio = histórico todo.
+    members: (params) => get("/api/members", params),
     history: () => get("/api/history"),
     mirror: (id) => get("/api/history/mirror", { id }),
     // Liga de todos os membros (semana atual). Consulta 1 jogador por membro: pode demorar.

@@ -85,6 +85,55 @@
     }).join("")}</ul>`;
   }
 
+  /* ---------- Eventos da guerra: ataques dos dois clãs na ordem em que aconteceram ---------- */
+
+  const EVENTS_PER_PAGE = 10;
+  const eventsPages = (events) => Math.max(1, Math.ceil(events.length / EVENTS_PER_PAGE));
+  // `want` = página pedida; 0 (ou além do fim) = a última, onde ficam os ataques mais recentes.
+  const eventsPage = (events, want) => (want > 0 && want < eventsPages(events) ? want : eventsPages(events));
+
+  function eventItem(e) {
+    const enemy = e.side === "enemy", a = e.attacker || {}, d = e.defender;
+    const info = (x) => (x ? `#${x.position ?? "?"} · ${x.town_hall ? "CV" + x.town_hall : "CV—"}` : "—");
+    return `<li class="ev-item${enemy ? " is-enemy" : ""}">
+      <span class="ev-n">#${e.n}</span>
+      <div class="ev-main">
+        <div class="ev-who"><span class="ev-name">${enemy ? "💀 " : "💫 "}${esc(a.name ?? "—")}</span><span class="ev-vs" aria-label="atacou">⚔️</span><span class="ev-name is-target">${esc(d?.name ?? "—")}</span></div>
+        <div class="ev-sub"><span>${info(a)}</span><span aria-hidden="true">→</span><span>${info(d)}</span></div>
+      </div>
+      <div class="ev-res">${starsWrap(e.stars || 0, "esp-stars" + (enemy ? " esp-stars-enemy" : ""))}<span class="ev-pct">${Math.round(e.destruction || 0)}%</span></div>
+    </li>`;
+  }
+
+  function eventsPager(cur, pages) {
+    if (pages < 2) return "";
+    const btn = (label, page, aria, { active, off } = {}) =>
+      `<button type="button" class="hist-page${active ? " is-active" : ""}" data-ev-page="${page}" aria-label="${aria}"${active ? ' aria-current="page"' : ""}${off ? " disabled" : ""}>${label}</button>`;
+    const shown = [...new Set([1, cur - 1, cur, cur + 1, pages].filter((p) => p >= 1 && p <= pages))].sort((a, b) => a - b);
+    let out = btn("‹", cur - 1, "Página anterior", { off: cur === 1 });
+    shown.forEach((p, i) => {
+      if (i && p - shown[i - 1] > 1) out += `<span class="hist-gap" aria-hidden="true">…</span>`;
+      out += btn(p, p, "Página " + p, { active: p === cur });
+    });
+    return out + btn("›", cur + 1, "Próxima página", { off: cur === pages });
+  }
+
+  // Miolo da lista (contagem + 10 ataques + paginação). Refeito sozinho quando troca de página.
+  function eventsInner(events, want) {
+    if (!events.length) return `<p class="ev-empty">Nenhum ataque até agora.</p>`;
+    const pages = eventsPages(events), cur = eventsPage(events, want), from = (cur - 1) * EVENTS_PER_PAGE;
+    const slice = events.slice(from, from + EVENTS_PER_PAGE);
+    return `<p class="ev-count">Ataques ${from + 1}–${from + slice.length} de ${events.length} · do primeiro ao último</p>
+      <ul class="ev-list">${slice.map(eventItem).join("")}</ul>
+      <div class="hist-pager ev-pager" role="navigation" aria-label="Páginas dos eventos">${eventsPager(cur, pages)}</div>`;
+  }
+
+  function eventsBlock(war, ui) {
+    if (!Array.isArray(war.events) || !war.events.length) return "";
+    return `<button type="button" class="mirrors-toggle" data-events-btn aria-expanded="${ui.eventsOpen}"><span data-events-label>${ui.eventsOpen ? "Ocultar" : "Eventos"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
+      <div class="${ui.eventsOpen ? "" : "hidden"}" data-events-body><div data-events-inner>${eventsInner(war.events, ui.eventsPage)}</div></div>`;
+  }
+
   const WAR_RESULT = { won: ["Vitória", "is-won"], lost: ["Derrota", "is-lost"], tie: ["Empate", "is-tie"] };
 
   function warCard(war, ui) {
@@ -112,6 +161,7 @@
           ${side(war.enemy.name, war.enemy, true)}</div>
         ${timer}
         ${mirrors}
+        ${eventsBlock(war, ui)}
       </div></div>`;
   }
 
@@ -493,5 +543,22 @@
     };
   }
 
-  window.TahRender = { esc, dashboard, memberRow, membersHead, standingCell, rankDetail, history, mirrorList, ROLES };
+  // Linha embaixo dos botões de período: "Últimos 60 dias (19/09 – 18/11) · 3 guerras · 2 ligas · 0 raids".
+  function periodInfo(p) {
+    if (!p) return "";
+    const thisYear = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric" }).format(new Date());
+    const day = (ymd) => {
+      if (!ymd) return "";
+      const [y, m, d] = ymd.split("-");
+      return `${d}/${m}${y === thisYear ? "" : "/" + y.slice(2)}`;
+    };
+    const n = (v, one, many) => `${v ?? 0} ${v === 1 ? one : many}`;
+    const counts = `${n(p.wars, "guerra", "guerras")} · ${n(p.cwl, "liga", "ligas")} · ${n(p.raids, "raid", "raids")}`;
+    let label = "Todo o histórico";
+    if (p.mode === "days") label = `Últimos ${p.days} dias (${day(p.from)} – ${day(p.to)})`;
+    else if (p.mode === "range") label = p.from && p.to ? `${day(p.from)} – ${day(p.to)}` : p.from ? `Desde ${day(p.from)}` : `Até ${day(p.to)}`;
+    return `${label} · ${counts}`;
+  }
+
+  window.TahRender = { esc, dashboard, memberRow, membersHead, standingCell, rankDetail, history, mirrorList, eventsInner, periodInfo, ROLES };
 })();
