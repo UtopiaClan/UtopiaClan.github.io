@@ -519,7 +519,7 @@
       item.classList.toggle("is-open", ui.raidCard);
     } else if ((el = hit("[data-mirrors-btn]"))) {
       ui.mirrorsOpen = toggle(el, $("[data-mirrors-body]"));
-      $("[data-mirrors-label]", el).textContent = ui.mirrorsOpen ? "Ocultar" : "Detalhes";
+      $("[data-mirrors-label]", el).textContent = ui.mirrorsOpen ? "Ocultar" : "Espelhos";
     } else if ((el = hit("[data-events-btn]"))) {
       ui.eventsOpen = toggle(el, $("[data-events-body]"));
       $("[data-events-label]", el).textContent = ui.eventsOpen ? "Ocultar" : "Eventos";

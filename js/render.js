@@ -129,9 +129,9 @@
       <div class="hist-pager ev-pager" role="navigation" aria-label="Páginas dos eventos">${eventsPager(cur, pages)}</div>`;
   }
 
-  // O botão aparece sempre que há guerra (mesmo em preparação, sem ataques). Sem `events` = bot ainda na versão antiga.
+  // O botão aparece sempre que há guerra, mesmo em preparação (ainda sem ataques).
   function eventsBlock(war, ui) {
-    const body = Array.isArray(war.events) ? eventsInner(war.events, ui.eventsPage) : `<p class="ev-empty">Eventos indisponíveis: o bot ainda não foi atualizado.</p>`;
+    const body = Array.isArray(war.events) && war.events.length ? eventsInner(war.events, ui.eventsPage) : `<p class="ev-empty">Nenhum ataque até agora.</p>`;
     return `<button type="button" class="mirrors-toggle" data-events-btn aria-expanded="${ui.eventsOpen}"><span data-events-label>${ui.eventsOpen ? "Ocultar" : "Eventos"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
       <div class="${ui.eventsOpen ? "" : "hidden"}" data-events-body><div data-events-inner>${body}</div></div>`;
   }
@@ -152,7 +152,7 @@
       : `<div class="war-timer"><span class="war-timer-label">${prep ? "Começa em" : "Termina em"}</span>
           <span class="war-timer-value" data-countdown="${esc(target)}">--</span><span class="war-timer-note">${fdateTime(target)}</span></div>`;
     const mirrors = Array.isArray(war.mirror) && war.mirror.length
-      ? `<button type="button" class="mirrors-toggle" data-mirrors-btn aria-expanded="${ui.mirrorsOpen}"><span data-mirrors-label>${ui.mirrorsOpen ? "Ocultar" : "Detalhes"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
+      ? `<button type="button" class="mirrors-toggle" data-mirrors-btn aria-expanded="${ui.mirrorsOpen}"><span data-mirrors-label>${ui.mirrorsOpen ? "Ocultar" : "Espelhos"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
         <div class="${ui.mirrorsOpen ? "" : "hidden"}" data-mirrors-body>${mirrorList(war.mirror, ui.openBases, !ended)}</div>`
       : "";
     return `<div class="acc-item is-open">
