@@ -7,7 +7,7 @@
   const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
   const ui = {
-    mirrorsOpen: false, openBases: new Set(), eventsOpen: false, eventsPage: 0, // eventsPage 0 = acompanha a última página
+    mirrorsOpen: false, openBases: new Set(), eventsOpen: false, eventsPage: 1, // eventsPage: 1 = os ataques mais recentes
     raidCard: false, membersView: "geral", membersSort: "default", raidOpen: new Set(), openMembers: new Set(),
     period: { mode: "days", days: 60 }, // filtro de data dos membros: padrão = últimos 60 dias
   };
@@ -225,7 +225,7 @@
   }
 
   function renderMembers() {
-    periodBar.classList.toggle("hidden", ui.membersView === "geral"); // o Geral não depende de período
+    periodBar.classList.toggle("hidden", ui.membersView === "geral" || !periodSupported); // o Geral não depende de período
     buildCvFilter(); buildSortSelect();
     $("#membersHead").innerHTML = R.membersHead(ui.membersView);
     $("#membersBody").innerHTML = orderedMembers().map((m) => R.memberRow(m, ui.membersView)).join("");
@@ -286,7 +286,8 @@
 
   const periodBar = $("#memberPeriodBar"), periodInfo = $("#memberPeriodInfo"), customBox = $("#memberPeriodCustom");
   const fromInput = $("#memberFrom"), toInput = $("#memberTo"), membersTable = $("#membersTable");
-  const periodParams = (p) => (p.mode === "days" ? { days: p.days } : p.mode === "range" ? { ...(p.from ? { from: p.from } : {}), ...(p.to ? { to: p.to } : {}) } : {});
+  let periodSupported = true; // vira false se o bot recusar o filtro (versão antiga): a lista carrega sem ele e a barra some
+  const periodParams = (p) => (!periodSupported ? {} : p.mode === "days" ? { days: p.days } : p.mode === "range" ? { ...(p.from ? { from: p.from } : {}), ...(p.to ? { to: p.to } : {}) } : {});
   const periodKey = (p) => JSON.stringify(periodParams(p));
   const periodCache = {}; // chave do período -> { at, d }: trocar de botão e voltar não pede de novo
   let membersReq = 0, membersPendingKey = null;
@@ -324,10 +325,20 @@
     membersPendingKey = key;
     membersTable.classList.add("is-loading");
     try {
-      const d = await API.members(periodParams(period));
+      const sent = periodParams(period);
+      let d;
+      try { d = await API.members(sent); }
+      catch (e) {
+        if (!Object.keys(sent).length || !/^HTTP 4\d\d/.test((e && e.message) || "")) throw e;
+        console.warn("O bot recusou o filtro de data (" + e.message + "): carregando a lista sem período. Atualize o bot.");
+        periodSupported = false;
+        d = await API.members();
+      }
       if (mine !== membersReq) return; // chegou um pedido mais novo: este já não vale
-      periodCache[key] = { at: Date.now(), d };
-      loaded.members = Date.now(); loaded.membersKey = key;
+      if (!periodSupported) { period.mode = "all"; delete d.period; }
+      const stored = periodKey(period); // sem o filtro, a chave vira a do "histórico todo"
+      periodCache[stored] = { at: Date.now(), d };
+      loaded.members = Date.now(); loaded.membersKey = stored;
       apply(d);
       loadRanks(); // não espera: a lista aparece já e a liga entra quando chegar
     } catch (e) { if (mine === membersReq) fail(e); }
@@ -513,8 +524,8 @@
       ui.eventsOpen = toggle(el, $("[data-events-body]"));
       $("[data-events-label]", el).textContent = ui.eventsOpen ? "Ocultar" : "Eventos";
     } else if ((el = hit("[data-ev-page]"))) {
-      const events = (dashData && dashData.war && dashData.war.events) || [], want = +el.dataset.evPage;
-      ui.eventsPage = want >= Math.ceil(events.length / 10) ? 0 : want; // a última página volta a acompanhar os novos ataques
+      const events = (dashData && dashData.war && dashData.war.events) || [];
+      ui.eventsPage = +el.dataset.evPage || 1;
       const box = $("[data-events-inner]");
       if (box) box.innerHTML = R.eventsInner(events, ui.eventsPage);
     } else if ((el = hit("[data-mperiod]"))) {

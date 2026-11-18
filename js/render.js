@@ -89,8 +89,8 @@
 
   const EVENTS_PER_PAGE = 10;
   const eventsPages = (events) => Math.max(1, Math.ceil(events.length / EVENTS_PER_PAGE));
-  // `want` = página pedida; 0 (ou além do fim) = a última, onde ficam os ataques mais recentes.
-  const eventsPage = (events, want) => (want > 0 && want < eventsPages(events) ? want : eventsPages(events));
+  // `want` = página pedida (1 = a mais recente); fora do intervalo cai na 1.
+  const eventsPage = (events, want) => (want >= 1 && want <= eventsPages(events) ? want : 1);
 
   function eventItem(e) {
     const enemy = e.side === "enemy", a = e.attacker || {}, d = e.defender;
@@ -118,20 +118,22 @@
     return out + btn("›", cur + 1, "Próxima página", { off: cur === pages });
   }
 
-  // Miolo da lista (contagem + 10 ataques + paginação). Refeito sozinho quando troca de página.
+  // Miolo da lista (contagem + 10 ataques + paginação). Do mais recente ao primeiro; refeito quando troca de página.
+  // `events` vem do bot em ordem cronológica (#1 = primeiro ataque da guerra).
   function eventsInner(events, want) {
     if (!events.length) return `<p class="ev-empty">Nenhum ataque até agora.</p>`;
     const pages = eventsPages(events), cur = eventsPage(events, want), from = (cur - 1) * EVENTS_PER_PAGE;
-    const slice = events.slice(from, from + EVENTS_PER_PAGE);
-    return `<p class="ev-count">Ataques ${from + 1}–${from + slice.length} de ${events.length} · do primeiro ao último</p>
+    const slice = events.slice().reverse().slice(from, from + EVENTS_PER_PAGE);
+    return `<p class="ev-count">Ataques ${from + 1}–${from + slice.length} de ${events.length} · do mais recente ao primeiro</p>
       <ul class="ev-list">${slice.map(eventItem).join("")}</ul>
       <div class="hist-pager ev-pager" role="navigation" aria-label="Páginas dos eventos">${eventsPager(cur, pages)}</div>`;
   }
 
+  // O botão aparece sempre que há guerra (mesmo em preparação, sem ataques). Sem `events` = bot ainda na versão antiga.
   function eventsBlock(war, ui) {
-    if (!Array.isArray(war.events) || !war.events.length) return "";
+    const body = Array.isArray(war.events) ? eventsInner(war.events, ui.eventsPage) : `<p class="ev-empty">Eventos indisponíveis: o bot ainda não foi atualizado.</p>`;
     return `<button type="button" class="mirrors-toggle" data-events-btn aria-expanded="${ui.eventsOpen}"><span data-events-label>${ui.eventsOpen ? "Ocultar" : "Eventos"}</span>${ic("chevron-down", "mirrors-toggle-chevron")}</button>
-      <div class="${ui.eventsOpen ? "" : "hidden"}" data-events-body><div data-events-inner>${eventsInner(war.events, ui.eventsPage)}</div></div>`;
+      <div class="${ui.eventsOpen ? "" : "hidden"}" data-events-body><div data-events-inner>${body}</div></div>`;
   }
 
   const WAR_RESULT = { won: ["Vitória", "is-won"], lost: ["Derrota", "is-lost"], tie: ["Empate", "is-tie"] };
